@@ -237,17 +237,24 @@ export function setActive(relativePath: string): void {
   saveConfig(config);
 }
 
-export function findInstalledVersion(specifier: string): string | undefined {
+export function installedVersionMatchesSpecifier(specifier: string, version: InstalledVersion): boolean {
   const lower = specifier.toLowerCase();
+  const browserPath = `browsers/${version.repoName}/${version.version.fullString}`.toLowerCase();
+
+  return (
+    version.relativePath.toLowerCase() === lower ||
+    browserPath.endsWith(lower) ||
+    `browsers/${specifier}`.toLowerCase() === version.relativePath.toLowerCase() ||
+    `${version.repoName}/${version.version.build}`.toLowerCase() === lower ||
+    version.version.build.toLowerCase() === lower ||
+    version.version.fullString.toLowerCase() === lower ||
+    version.version.version?.toLowerCase() === lower
+  );
+}
+
+export function findInstalledVersion(specifier: string): string | undefined {
   for (const version of listInstalled()) {
-    if (
-      version.relativePath.toLowerCase() === lower ||
-      `browsers/${specifier}`.toLowerCase() === version.relativePath.toLowerCase() ||
-      `${version.repoName}/${version.version.build}`.toLowerCase() === lower ||
-      version.version.build.toLowerCase() === lower ||
-      version.version.fullString.toLowerCase() === lower ||
-      version.version.version?.toLowerCase() === lower
-    ) {
+    if (installedVersionMatchesSpecifier(specifier, version)) {
       return version.path;
     }
   }

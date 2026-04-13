@@ -42,7 +42,7 @@ import {
   rprint,
 } from "./pkgman";
 import { projectRoot } from "./assets";
-import { Camoufox } from "./async_api";
+import { Camoufox } from "./sync_api";
 import { main as launchGui } from "./gui/index";
 import { launchServer } from "./server";
 
