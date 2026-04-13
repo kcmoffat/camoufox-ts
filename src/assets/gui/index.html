@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Camoufox Manager</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        background: #121417;
+        color: #e5e7eb;
+      }
+      main {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      h1, h2 {
+        margin: 0 0 12px;
+      }
+      section {
+        margin-top: 24px;
+        padding: 16px;
+        border: 1px solid #2a313c;
+        border-radius: 8px;
+        background: #171b21;
+      }
+      .row, .version-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-top: 1px solid #222831;
+      }
+      .row:first-child, .version-row:first-child {
+        border-top: 0;
+      }
+      .meta {
+        color: #9aa4b2;
+        font-size: 14px;
+      }
+      button {
+        background: #2f8f68;
+        color: white;
+        border: 0;
+        border-radius: 6px;
+        padding: 8px 12px;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #2d3748;
+      }
+      button.warn {
+        background: #a44b4b;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .status {
+        margin-top: 12px;
+        color: #9aa4b2;
+      }
+      .repo-title {
+        margin-top: 16px;
+        color: #8dd3b8;
+      }
+      code {
+        color: #facc15;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Camoufox Manager</h1>
+      <p class="meta">TypeScript port manager for versions, channels, downloads, and GeoIP data.</p>
+
+      <section>
+        <div class="actions">
+          <button id="sync">Sync Repositories</button>
+          <button id="refresh" class="secondary">Refresh</button>
+          <button id="fetch-active">Fetch Active</button>
+        </div>
+        <div id="status" class="status">Loading…</div>
+      </section>
+
+      <section>
+        <h2>Active</h2>
+        <div id="active"></div>
+      </section>
+
+      <section>
+        <h2>Repositories</h2>
+        <div id="repos"></div>
+      </section>
+
+      <section>
+        <h2>GeoIP</h2>
+        <div id="geoip"></div>
+      </section>
+    </main>
+
+    <script>
+      const status = document.getElementById("status");
+      const active = document.getElementById("active");
+      const repos = document.getElementById("repos");
+      const geoip = document.getElementById("geoip");
+
+      async function api(path, body) {
+        const response = await fetch(path, {
+          method: body ? "POST" : "GET",
+          headers: body ? { "content-type": "application/json" } : undefined,
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || response.statusText);
+        }
+        return data;
+      }
+
+      function render(state) {
+        status.textContent = "Ready";
+        active.innerHTML = `
+          <div class="row">
+            <div>
+              <div><strong>Channel:</strong> <code>${state.active.channel}</code></div>
+              <div><strong>Pinned:</strong> ${state.active.pinned || "None"}</div>
+            </div>
+          </div>
+        `;
+
+        const installed = new Map(state.installed.map((entry) => [entry.build, entry]));
+        repos.innerHTML = "";
+        for (const repo of state.repos) {
+          const repoBlock = document.createElement("div");
+          repoBlock.innerHTML = `
+            <h3 class="repo-title">${repo.name}</h3>
+            <div class="actions">
+              <button data-channel="${repo.name}/stable">Follow Stable</button>
+              <button data-channel="${repo.name}/prerelease" class="secondary">Follow Prerelease</button>
+            </div>
+          `;
+          repoBlock.querySelectorAll("[data-channel]").forEach((button) => {
+            button.addEventListener("click", async () => {
+              const [repoName, channelType] = button.dataset.channel.split("/");
+              await mutate(() => api("/api/set-channel", { repoName, channelType }));
+            });
+          });
+
+          for (const version of repo.versions || []) {
+            const fullVersion = `${version.version}-${version.build}`;
+            const installedVersion = installed.get(version.build);
+            const row = document.createElement("div");
+            row.className = "version-row";
+            row.innerHTML = `
+              <div>
+                <div><strong>v${fullVersion}</strong> ${version.is_prerelease ? "(prerelease)" : "(stable)"}</div>
+                <div class="meta">${installedVersion ? installedVersion.channelPath : "Not installed"}</div>
+              </div>
+              <div class="actions">
+                <button data-fetch="${repo.name}/${version.is_prerelease ? "prerelease" : "stable"}/${fullVersion}">Fetch</button>
+                <button data-pin="${repo.name}/${version.is_prerelease ? "prerelease" : "stable"}/${fullVersion}" class="secondary">Pin</button>
+                ${installedVersion ? `<button data-remove="${installedVersion.channelPath}" class="warn">Remove</button>` : ""}
+              </div>
+            `;
+            row.querySelector("[data-fetch]").addEventListener("click", async () => {
+              await mutate(() => api("/api/fetch", { version: row.querySelector("[data-fetch]").dataset.fetch }));
+            });
+            row.querySelector("[data-pin]").addEventListener("click", async () => {
+              const [repoName, channelType, versionValue] = row.querySelector("[data-pin]").dataset.pin.split("/");
+              await mutate(() => api("/api/pin-version", { repoName, channelType, version: versionValue }));
+            });
+            const removeButton = row.querySelector("[data-remove]");
+            if (removeButton) {
+              removeButton.addEventListener("click", async () => {
+                await mutate(() => api("/api/remove", { versionPath: removeButton.dataset.remove }));
+              });
+            }
+            repoBlock.appendChild(row);
+          }
+          repos.appendChild(repoBlock);
+        }
+
+        geoip.innerHTML = `
+          <div class="row">
+            <div>
+              <div><strong>Installed:</strong> ${state.geoip.installed || "None"}</div>
+              <div class="meta">${state.geoip.path || ""} ${state.geoip.size || ""}</div>
+            </div>
+            <div class="actions">
+              <button id="geoip-delete-data" class="warn">Delete All</button>
+            </div>
+          </div>
+        `;
+        document.getElementById("geoip-delete-data").addEventListener("click", async () => {
+          await mutate(() => api("/api/geoip/delete-data", {}));
+        });
+        for (const source of state.geoip.sources || []) {
+          const row = document.createElement("div");
+          row.className = "version-row";
+          const downloaded = (state.geoip.downloaded || []).includes(source);
+          row.innerHTML = `
+            <div>
+              <div><strong>${source}</strong></div>
+              <div class="meta">${state.geoip.installed === source ? "Active" : downloaded ? "Downloaded" : "Not downloaded"}</div>
+            </div>
+            <div class="actions">
+              <button data-geoip-download="${source}">${downloaded ? "Refresh" : "Download"}</button>
+              ${downloaded ? `<button data-geoip-activate="${source}" class="secondary">Activate</button>` : ""}
+              ${downloaded ? `<button data-geoip-delete="${source}" class="warn">Delete</button>` : ""}
+            </div>
+          `;
+          row.querySelector("[data-geoip-download]").addEventListener("click", async () => {
+            await mutate(() => api("/api/geoip/download", { source }));
+          });
+          const activateButton = row.querySelector("[data-geoip-activate]");
+          if (activateButton) {
+            activateButton.addEventListener("click", async () => {
+              await mutate(() => api("/api/geoip/activate", { source }));
+            });
+          }
+          const deleteButton = row.querySelector("[data-geoip-delete]");
+          if (deleteButton) {
+            deleteButton.addEventListener("click", async () => {
+              await mutate(() => api("/api/geoip/delete-source", { source }));
+            });
+          }
+          geoip.appendChild(row);
+        }
+      }
+
+      async function mutate(action) {
+        status.textContent = "Working…";
+        try {
+          render(await action());
+        } catch (error) {
+          status.textContent = error.message;
+        }
+      }
+
+      document.getElementById("sync").addEventListener("click", async () => {
+        await mutate(() => api("/api/sync", {}));
+      });
+      document.getElementById("refresh").addEventListener("click", async () => {
+        await load();
+      });
+      document.getElementById("fetch-active").addEventListener("click", async () => {
+        await mutate(() => api("/api/fetch", {}));
+      });
+
+      async function load() {
+        status.textContent = "Loading…";
+        try {
+          render(await api("/api/state"));
+        } catch (error) {
+          status.textContent = error.message;
+        }
+      }
+
+      load();
+    </script>
+  </body>
+</html>
