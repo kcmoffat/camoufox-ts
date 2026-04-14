@@ -337,11 +337,15 @@ function buildInitScript(values: Record<string, any>): string {
     }
   }
 
-  lines.push(
-    `  if (typeof w.setTimezone === "function") w.setTimezone(${JSON.stringify(
-      values.timezone ?? 'Intl.DateTimeFormat().resolvedOptions().timeZone',
-    )});`,
-  );
+  if (values.timezone != null) {
+    lines.push(
+      `  if (typeof w.setTimezone === "function") w.setTimezone(${JSON.stringify(values.timezone)});`,
+    );
+  } else {
+    lines.push(
+      '  if (typeof w.setTimezone === "function") w.setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);',
+    );
+  }
   lines.push(
     `  if (typeof w.setWebRTCIPv4 === "function") w.setWebRTCIPv4(${JSON.stringify(
       values.webrtcIP ?? "",

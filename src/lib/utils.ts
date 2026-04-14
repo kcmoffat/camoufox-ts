@@ -517,6 +517,8 @@ export async function launchOptions(input: {
   return result;
 }
 
+export const launch_options = launchOptions;
+
 function randomSeed(): number {
   return Math.floor(Math.random() * 4_294_967_295) + 1;
 }

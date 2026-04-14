@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
 import * as asyncApi from "../src/lib/async_api";
+import { generateContextFingerprint } from "../src/lib/fingerprints";
 import { Version } from "../src/lib/pkgman";
 import {
   Camoufox,
   NewBrowser,
   NewContext,
 } from "../src/lib/sync_api";
+import { launchOptions, launch_options } from "../src/lib/utils";
 import {
   InstalledVersion,
   installedVersionMatchesSpecifier,
@@ -50,5 +52,37 @@ describe("multiversion", () => {
     expect(installedVersionMatchesSpecifier("134.0.2-beta.20", version)).toBe(true);
     expect(installedVersionMatchesSpecifier("official/beta.20", version)).toBe(true);
     expect(installedVersionMatchesSpecifier("other/134.0.2-beta.20", version)).toBe(false);
+  });
+});
+
+describe("ported upstream helpers", () => {
+  it("exports launch_options as an alias of launchOptions", () => {
+    expect(launch_options).toBe(launchOptions);
+  });
+
+  it("falls back to the runtime timezone expression when no preset timezone exists", () => {
+    const { initScript } = generateContextFingerprint({
+      preset: {
+        navigator: {
+          userAgent:
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0",
+          platform: "MacIntel",
+          hardwareConcurrency: 8,
+        },
+        screen: {
+          width: 1440,
+          height: 900,
+          colorDepth: 24,
+        },
+        webgl: {
+          unmaskedVendor: "Intel Inc.",
+          unmaskedRenderer: "Intel Iris OpenGL Engine",
+        },
+      },
+    });
+    expect(initScript).toContain(
+      'w.setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);',
+    );
+    expect(initScript).not.toContain('"Intl.DateTimeFormat().resolvedOptions().timeZone"');
   });
 });
