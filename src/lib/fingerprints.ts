@@ -8,6 +8,7 @@ import type {
 import { FingerprintGenerator } from "fingerprint-generator";
 
 import { assetPath } from "./assets";
+import { handleLocale } from "./locales";
 import { loadYaml, OS_ARCH_MATRIX } from "./pkgman";
 import { sampleWebgl } from "./webgl";
 
@@ -341,10 +342,6 @@ function buildInitScript(values: Record<string, any>): string {
     lines.push(
       `  if (typeof w.setTimezone === "function") w.setTimezone(${JSON.stringify(values.timezone)});`,
     );
-  } else {
-    lines.push(
-      '  if (typeof w.setTimezone === "function") w.setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);',
-    );
   }
   lines.push(
     `  if (typeof w.setWebRTCIPv4 === "function") w.setWebRTCIPv4(${JSON.stringify(
@@ -373,8 +370,10 @@ export function generateContextFingerprint(input: {
   os?: string | string[];
   ffVersion?: string;
   webrtcIp?: string;
+  timezone?: string;
+  locale?: string;
 }): Record<string, any> {
-  const { preset, os, ffVersion, webrtcIp } = input;
+  const { preset, os, ffVersion, webrtcIp, timezone: explicitTimezone, locale } = input;
   let config: Record<string, any>;
   let nav: Record<string, any>;
   let screen: Record<string, any>;
@@ -441,6 +440,16 @@ export function generateContextFingerprint(input: {
     selectedPreset = { navigator: nav, screen, webgl };
   }
 
+  if (explicitTimezone) {
+    config.timezone = explicitTimezone;
+  }
+  if (locale) {
+    const parsedLocale = handleLocale(locale);
+    Object.assign(config, parsedLocale.asConfig(), {
+      "navigator.language": parsedLocale.asString,
+    });
+  }
+
   const initValues = {
     fontSpacingSeed: config["fonts:spacing_seed"],
     audioFingerprintSeed: config["audio:seed"],
@@ -454,7 +463,7 @@ export function generateContextFingerprint(input: {
     screenWidth: screen.width,
     screenHeight: screen.height,
     screenColorDepth: screen.colorDepth,
-    timezone: selectedPreset?.timezone ?? config.timezone,
+    timezone: typeof selectedPreset?.timezone === "string" ? selectedPreset.timezone : config.timezone,
     fontList: config.fonts,
     speechVoices: config.voices,
     webrtcIP: webrtcIp ?? "",
@@ -475,9 +484,12 @@ export function generateContextFingerprint(input: {
   if (screen.devicePixelRatio) {
     contextOptions.deviceScaleFactor = screen.devicePixelRatio;
   }
-  const timezone = config.timezone ?? selectedPreset?.timezone;
-  if (timezone) {
-    contextOptions.timezoneId = timezone;
+  const timezoneId = config.timezone ?? selectedPreset?.timezone;
+  if (timezoneId) {
+    contextOptions.timezoneId = timezoneId;
+  }
+  if (config["navigator.language"]) {
+    contextOptions.locale = config["navigator.language"];
   }
 
   return {

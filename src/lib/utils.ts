@@ -424,7 +424,13 @@ export async function launchOptions(input: {
       }
     }
     const geolocation = await getGeolocation(String(resolvedIp), geoipDb);
-    Object.assign(config, geolocation.asConfig());
+    for (const [key, value] of Object.entries(geolocation.asConfig())) {
+      if (key === "timezone" || key.startsWith("locale:")) {
+        setInto(config, key, value);
+      } else {
+        config[key] = value;
+      }
+    }
   } else if (proxy && !proxy.server?.includes("localhost") && !isDomainSet(config, "geolocation")) {
     LeakWarning.warn("proxy_without_geoip");
   }

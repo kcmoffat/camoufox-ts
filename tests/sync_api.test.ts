@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import * as asyncApi from "../src/lib/async_api";
+import * as geolocationModule from "../src/lib/geolocation";
 import { generateContextFingerprint } from "../src/lib/fingerprints";
 import { Version } from "../src/lib/pkgman";
 import {
@@ -60,7 +61,7 @@ describe("ported upstream helpers", () => {
     expect(launch_options).toBe(launchOptions);
   });
 
-  it("falls back to the runtime timezone expression when no preset timezone exists", () => {
+  it("does not force a runtime timezone when none is configured", () => {
     const { initScript } = generateContextFingerprint({
       preset: {
         navigator: {
@@ -80,9 +81,33 @@ describe("ported upstream helpers", () => {
         },
       },
     });
-    expect(initScript).toContain(
-      'w.setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);',
-    );
-    expect(initScript).not.toContain('"Intl.DateTimeFormat().resolvedOptions().timeZone"');
+    expect(initScript).not.toContain("setTimezone");
+  });
+
+  it("preserves explicit timezone and locale when geoip also resolves them", async () => {
+    const geolocationSpy = vi.spyOn(geolocationModule, "getGeolocation").mockResolvedValue({
+      asConfig: () => ({
+        "geolocation:latitude": 51.5,
+        "geolocation:longitude": -0.12,
+        timezone: "America/New_York",
+        "locale:language": "en",
+        "locale:region": "US",
+      }),
+    } as any);
+
+    const options = await launchOptions({
+      os: "windows",
+      geoip: "203.0.113.9",
+      locale: "en-GB",
+      config: { timezone: "Europe/London" },
+    });
+
+    const envConfig = JSON.parse(options.env.CAMOU_CONFIG_1);
+    expect(envConfig.timezone).toBe("Europe/London");
+    expect(envConfig["locale:region"]).toBe("GB");
+    expect(envConfig["locale:language"]).toBe("en");
+    expect(envConfig["geolocation:latitude"]).toBe(51.5);
+
+    geolocationSpy.mockRestore();
   });
 });

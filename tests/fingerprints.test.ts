@@ -23,6 +23,21 @@ describe("fingerprints", () => {
     expect(generated.config["fonts:spacing_seed"]).toBeGreaterThan(0);
   });
 
+  it("accepts explicit timezone and locale for per-context fingerprints", () => {
+    const generated = generateContextFingerprint({
+      os: "windows",
+      ffVersion: "140",
+      timezone: "Europe/London",
+      locale: "en-GB",
+    });
+
+    expect(generated.initScript).toContain('w.setTimezone("Europe/London")');
+    expect(generated.contextOptions.timezoneId).toBe("Europe/London");
+    expect(generated.contextOptions.locale).toBe("en-GB");
+    expect(generated.config["locale:region"]).toBe("GB");
+    expect(generated.config["navigator.language"]).toBe("en-GB");
+  });
+
   it("loads bundled real presets", () => {
     const preset = getRandomPreset("linux");
     expect(preset).toBeTruthy();
