@@ -27,6 +27,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
+    "pack:local": "npm run build && tsx scripts/pack-local.ts",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "dev:cli": "tsx src/cli.ts"
