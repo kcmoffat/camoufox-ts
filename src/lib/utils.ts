@@ -26,7 +26,7 @@ import { geoipAllowed, getGeolocation } from "./geolocation";
 import { Proxy, publicIp, validIPv4, validIPv6 } from "./ip";
 import { handleLocales } from "./locales";
 import { findInstalledVersion } from "./multiversion";
-import { getPath, installedVerstr, launchPath, OS_NAME } from "./pkgman";
+import { camoufoxPath, getPath, launchPath, OS_NAME, Version } from "./pkgman";
 import { VirtualDisplay } from "./virtdisplay";
 import { sampleWebgl } from "./webgl";
 import { assetPath } from "./assets";
@@ -328,6 +328,7 @@ export async function launchOptions(input: {
 
   const config = passedConfig ?? {};
   const environment = { ...env } as Record<string, string>;
+  const requestedBrowserPath = browser ? resolveInstalledBrowserPath(browser) : undefined;
 
   if (virtualDisplay) {
     environment.DISPLAY = virtualDisplay;
@@ -348,7 +349,15 @@ export async function launchOptions(input: {
     config.addons = addons;
   }
 
-  const ffVersionStr = ffVersion != null ? String(ffVersion) : installedVerstr().split(".", 1)[0];
+  const ffVersionStr =
+    ffVersion != null
+      ? String(ffVersion)
+      : resolveFirefoxVersion(
+          await resolveVersionSourcePath({
+            browserPath: requestedBrowserPath,
+            executablePath,
+          }),
+        );
   let usedPreset = false;
 
   if (fingerprint != null) {
@@ -497,16 +506,8 @@ export async function launchOptions(input: {
 
   const resolvedExecutablePath = executablePath
     ? executablePath
-    : browser
-      ? await (async () => {
-          const browserPath = findInstalledVersion(browser);
-          if (!browserPath) {
-            throw new Error(
-              `Browser version '${browser}' not found. Run \`camoufox list\` to see installed versions.`,
-            );
-          }
-          return launchPath(browserPath);
-        })()
+    : requestedBrowserPath
+      ? await launchPath(requestedBrowserPath)
       : await launchPath();
 
   const result: Record<string, any> = {
@@ -524,6 +525,58 @@ export async function launchOptions(input: {
 }
 
 export const launch_options = launchOptions;
+
+function resolveInstalledBrowserPath(browser: string): string {
+  const browserPath = findInstalledVersion(browser);
+  if (!browserPath) {
+    throw new Error(
+      `Browser version '${browser}' not found. Run \`camoufox list\` to see installed versions.`,
+    );
+  }
+  return browserPath;
+}
+
+async function resolveVersionSourcePath(input: {
+  browserPath?: string;
+  executablePath?: string;
+}): Promise<string> {
+  if (input.browserPath) {
+    return input.browserPath;
+  }
+
+  if (input.executablePath) {
+    const executableBundlePath = findBundleRoot(input.executablePath);
+    if (executableBundlePath) {
+      return executableBundlePath;
+    }
+  }
+
+  return camoufoxPath();
+}
+
+function findBundleRoot(executablePath: string): string | undefined {
+  let current = path.dirname(executablePath);
+
+  while (true) {
+    if (fs.existsSync(path.join(current, "version.json"))) {
+      return current;
+    }
+
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return undefined;
+    }
+    current = parent;
+  }
+}
+
+function resolveFirefoxVersion(bundlePath: string): string {
+  const version = Version.fromPath(bundlePath).version;
+  if (!version) {
+    throw new Error(`Version information not found at ${path.join(bundlePath, "version.json")}.`);
+  }
+  return version.split(".", 1)[0];
+}
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 4_294_967_295) + 1;
