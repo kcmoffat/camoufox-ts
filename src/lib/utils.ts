@@ -153,10 +153,11 @@ export function getTargetOs(config: Record<string, any>): "mac" | "win" | "lin" 
 
 export function determineUaOs(userAgent: string): "mac" | "win" | "lin" {
   const osName = new UAParser(userAgent).getOS().name ?? "";
-  if (osName.startsWith("Mac")) {
+  const normalizedOsName = osName.toLowerCase();
+  if (normalizedOsName.startsWith("mac")) {
     return "mac";
   }
-  if (osName.startsWith("Windows")) {
+  if (normalizedOsName.startsWith("windows")) {
     return "win";
   }
   return "lin";

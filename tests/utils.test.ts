@@ -26,7 +26,7 @@ vi.mock("../src/lib/pkgman", async () => {
   };
 });
 
-import { generateRuntimeFontConfig, launchOptions } from "../src/lib/utils";
+import { determineUaOs, generateRuntimeFontConfig, launchOptions } from "../src/lib/utils";
 
 const FIREFOX_PRESET = {
   navigator: {
@@ -62,6 +62,15 @@ async function createBundleDir(): Promise<string> {
   return bundleDir;
 }
 
+function readConfigFromEnv(env: NodeJS.ProcessEnv): Record<string, any> {
+  const json = Object.keys(env)
+    .filter((key) => key.startsWith("CAMOU_CONFIG_"))
+    .sort((left, right) => left.localeCompare(right))
+    .map((key) => env[key] ?? "")
+    .join("");
+  return JSON.parse(json);
+}
+
 afterEach(async () => {
   mocks.camoufoxPath.mockReset();
   mocks.getPath.mockReset();
@@ -74,6 +83,10 @@ afterEach(async () => {
 });
 
 describe("launchOptions", () => {
+  it("classifies macOS Firefox user agents as mac", () => {
+    expect(determineUaOs(FIREFOX_PRESET.navigator.userAgent)).toBe("mac");
+  });
+
   it("resolves Firefox version from the bootstrapped bundle on first launch", async () => {
     const bundleDir = await createBundleDir();
     mocks.camoufoxPath.mockResolvedValue(bundleDir);
@@ -109,6 +122,25 @@ describe("launchOptions", () => {
     expect(mocks.camoufoxPath).not.toHaveBeenCalled();
     expect(mocks.launchPath).not.toHaveBeenCalled();
     expect(mocks.installedVerstr).not.toHaveBeenCalled();
+  });
+
+  it("generates macOS font markers for macOS fingerprints", async () => {
+    const bundleDir = await createBundleDir();
+    mocks.camoufoxPath.mockResolvedValue(bundleDir);
+    mocks.launchPath.mockResolvedValue("/tmp/camoufox-bin");
+
+    const options = await launchOptions({
+      os: "macos",
+      blockWebgl: true,
+      excludeAddons: [DefaultAddons.UBO],
+      iKnowWhatImDoing: true,
+    });
+
+    const config = readConfigFromEnv(options.env);
+    expect(config["navigator.platform"]).toBe("MacIntel");
+    expect(config.fonts).toContain("PingFang HK");
+    expect(config.fonts).toContain("PingFang SC");
+    expect(config.fonts).toContain("PingFang TC");
   });
 });
 
