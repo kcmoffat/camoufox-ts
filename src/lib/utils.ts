@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
+import crypto from "node:crypto";
 import path from "node:path";
 
 import systeminformation from "systeminformation";
@@ -26,7 +27,7 @@ import { geoipAllowed, getGeolocation } from "./geolocation";
 import { Proxy, publicIp, validIPv4, validIPv6 } from "./ip";
 import { handleLocales } from "./locales";
 import { findInstalledVersion } from "./multiversion";
-import { camoufoxPath, getPath, launchPath, OS_NAME, Version } from "./pkgman";
+import { camoufoxPath, getPath, INSTALL_DIR, launchPath, OS_NAME, Version } from "./pkgman";
 import { VirtualDisplay } from "./virtdisplay";
 import { sampleWebgl } from "./webgl";
 import { assetPath } from "./assets";
@@ -59,14 +60,38 @@ export async function getEnvVars(
   if (OS_NAME === "lin") {
     const osDir = { lin: "linux", mac: "macos", win: "windows" }[userAgentOs];
     const fontConfigPath = await getPath(path.join("fontconfigs", osDir));
-    if (!fs.existsSync(path.join(fontConfigPath, "fonts.conf"))) {
+    const bundledFontConfig = path.join(fontConfigPath, "fonts.conf");
+    if (!fs.existsSync(bundledFontConfig)) {
       throw new Error(
         `fonts.conf not found in ${fontConfigPath}! Something is wrong with your Camoufox bundle.`,
       );
     }
+    envVars.FONTCONFIG_FILE = await generateRuntimeFontConfig(fontConfigPath);
   }
 
   return envVars;
+}
+
+export async function generateRuntimeFontConfig(fontConfigPath: string): Promise<string> {
+  const fontsDir = await getPath("fonts");
+  const bundledFontConfig = path.join(fontConfigPath, "fonts.conf");
+  const confContent = await fsp.readFile(bundledFontConfig, "utf8");
+  const runtimeContent = confContent.replace(
+    '<dir prefix="cwd">fonts</dir>',
+    `<dir>${fontsDir}</dir>`,
+  );
+
+  const cacheDir = path.join(INSTALL_DIR, "fontconfig");
+  await fsp.mkdir(cacheDir, { recursive: true });
+
+  const contentHash = crypto.createHash("sha256").update(runtimeContent).digest("hex").slice(0, 12);
+  const runtimePath = path.join(cacheDir, `fonts-${contentHash}.conf`);
+
+  if (!fs.existsSync(runtimePath)) {
+    await fsp.writeFile(runtimePath, runtimeContent, "utf8");
+  }
+
+  return runtimePath;
 }
 
 async function loadProperties(executablePath?: string): Promise<Record<string, string>> {

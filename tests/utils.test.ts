@@ -8,6 +8,7 @@ import { DefaultAddons } from "../src/lib/addons";
 
 const mocks = vi.hoisted(() => ({
   camoufoxPath: vi.fn<() => Promise<string>>(),
+  getPath: vi.fn<(file: string) => Promise<string>>(),
   installedVerstr: vi.fn(() => {
     throw new Error("installedVerstr should not be used during launch option resolution");
   }),
@@ -19,12 +20,13 @@ vi.mock("../src/lib/pkgman", async () => {
   return {
     ...actual,
     camoufoxPath: mocks.camoufoxPath,
+    getPath: mocks.getPath,
     installedVerstr: mocks.installedVerstr,
     launchPath: mocks.launchPath,
   };
 });
 
-import { launchOptions } from "../src/lib/utils";
+import { generateRuntimeFontConfig, launchOptions } from "../src/lib/utils";
 
 const FIREFOX_PRESET = {
   navigator: {
@@ -62,6 +64,7 @@ async function createBundleDir(): Promise<string> {
 
 afterEach(async () => {
   mocks.camoufoxPath.mockReset();
+  mocks.getPath.mockReset();
   mocks.installedVerstr.mockClear();
   mocks.launchPath.mockReset();
 
@@ -74,6 +77,7 @@ describe("launchOptions", () => {
   it("resolves Firefox version from the bootstrapped bundle on first launch", async () => {
     const bundleDir = await createBundleDir();
     mocks.camoufoxPath.mockResolvedValue(bundleDir);
+    mocks.getPath.mockImplementation(async (file: string) => path.join(bundleDir, file));
     mocks.launchPath.mockResolvedValue("/tmp/camoufox-bin");
 
     const options = await launchOptions({
@@ -105,5 +109,29 @@ describe("launchOptions", () => {
     expect(mocks.camoufoxPath).not.toHaveBeenCalled();
     expect(mocks.launchPath).not.toHaveBeenCalled();
     expect(mocks.installedVerstr).not.toHaveBeenCalled();
+  });
+});
+
+describe("generateRuntimeFontConfig", () => {
+  it("rewrites cwd-relative bundled font paths to absolute font paths", async () => {
+    const bundleDir = await createBundleDir();
+    const fontConfigDir = path.join(bundleDir, "fontconfigs", "linux");
+    const fontsDir = path.join(bundleDir, "fonts");
+    await fsp.mkdir(fontConfigDir, { recursive: true });
+    await fsp.mkdir(fontsDir, { recursive: true });
+    await fsp.writeFile(
+      path.join(fontConfigDir, "fonts.conf"),
+      '<fontconfig><dir prefix="cwd">fonts</dir></fontconfig>',
+    );
+
+    mocks.camoufoxPath.mockResolvedValue(bundleDir);
+    mocks.getPath.mockImplementation(async (file: string) => path.join(bundleDir, file));
+
+    const runtimePath = await generateRuntimeFontConfig(fontConfigDir);
+    const runtimeContent = await fsp.readFile(runtimePath, "utf8");
+
+    expect(runtimePath).toContain(path.join("fontconfig", "fonts-"));
+    expect(runtimeContent).toContain(`<dir>${fontsDir}</dir>`);
+    expect(runtimeContent).not.toContain('prefix="cwd"');
   });
 });
