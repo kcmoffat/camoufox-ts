@@ -23,6 +23,14 @@ describe("fingerprints", () => {
     expect(generated.config["fonts:spacing_seed"]).toBeGreaterThan(0);
   });
 
+  it("derives the WebGL OS when no per-context os is supplied", () => {
+    const generated = generateContextFingerprint({});
+
+    expect(generated.contextOptions.userAgent).toContain("Firefox/");
+    expect(generated.config["webGl:vendor"]).toBeTruthy();
+    expect(generated.config["webGl:renderer"]).toBeTruthy();
+  });
+
   it("accepts explicit timezone and locale for per-context fingerprints", () => {
     const generated = generateContextFingerprint({
       os: "windows",

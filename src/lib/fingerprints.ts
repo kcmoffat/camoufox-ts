@@ -123,6 +123,34 @@ function loadOsVoices(): Record<string, string[]> {
   return voicesCache;
 }
 
+function getPlatformTargetOs(platform: string): "macos" | "windows" | "linux" {
+  if (platform === "Win32") {
+    return "windows";
+  }
+  if (platform.toLowerCase().includes("linux")) {
+    return "linux";
+  }
+  return "macos";
+}
+
+function getContextWebglOsKey(
+  os: string | string[] | undefined,
+  platform: string,
+): keyof typeof OS_ARCH_MATRIX {
+  const osKeyMap: Record<"macos" | "windows" | "linux", keyof typeof OS_ARCH_MATRIX> = {
+    macos: "mac",
+    windows: "win",
+    linux: "lin",
+  };
+  const requestedOs = typeof os === "string" ? OS_TO_PRESET_KEY[os] ?? os : undefined;
+  const requestedOsKey = osKeyMap[requestedOs as "macos" | "windows" | "linux"];
+  if (requestedOsKey) {
+    return requestedOsKey;
+  }
+
+  return osKeyMap[getPlatformTargetOs(platform)];
+}
+
 function pickRandomSubset<T>(values: T[], percentageMin: number, percentageMax: number): T[] {
   const pct = percentageMin + Math.floor(Math.random() * (percentageMax - percentageMin + 1));
   const count = Math.round((pct / 100) * values.length);
@@ -393,12 +421,7 @@ export function generateContextFingerprint(input: {
     config["canvas:seed"] ??= randomSeed();
 
     const platform = config["navigator.platform"] ?? "";
-    const targetOs =
-      platform === "Win32"
-        ? "windows"
-        : String(platform).toLowerCase().includes("linux")
-          ? "linux"
-          : "macos";
+    const targetOs = getPlatformTargetOs(String(platform));
 
     config.fonts ??= generateRandomFontSubset(targetOs);
     config.voices ??= generateRandomVoiceSubset(targetOs);
@@ -410,17 +433,11 @@ export function generateContextFingerprint(input: {
           : "Intel Mac OS X 10.15";
 
     if (!config["webGl:vendor"] || !config["webGl:renderer"]) {
-      const osKey =
-        OS_ARCH_MATRIX[(os as keyof typeof OS_ARCH_MATRIX) ?? "mac" as keyof typeof OS_ARCH_MATRIX]
-          ? (os as keyof typeof OS_ARCH_MATRIX)
-          : platform === "Win32"
-            ? "win"
-            : String(platform).toLowerCase().includes("linux")
-              ? "lin"
-              : "mac";
-      const sampled = sampleWebgl(osKey);
-      delete sampled.webGl2Enabled;
-      Object.assign(config, sampled);
+      try {
+        const sampled = sampleWebgl(getContextWebglOsKey(os, String(platform)));
+        delete sampled.webGl2Enabled;
+        Object.assign(config, sampled);
+      } catch {}
     }
 
     nav = {
