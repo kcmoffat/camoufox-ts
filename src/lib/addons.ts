@@ -53,13 +53,21 @@ export function getAddonPath(addonName: string): string {
   return path.join(ADDONS_DIR, addonName);
 }
 
+function getDefaultAddonName(addon: DefaultAddons): string {
+  const entry = Object.entries(DefaultAddons).find(([, value]) => value === addon);
+  if (!entry) {
+    throw new Error(`Unknown default addon: ${addon}`);
+  }
+  return entry[0];
+}
+
 export async function maybeDownloadAddons(
   addons: DefaultAddons[],
   addonsList?: string[],
 ): Promise<void> {
   await fsp.mkdir(ADDONS_DIR, { recursive: true });
   for (const addon of addons) {
-    const addonName = addon.split("/").at(-2) === "latest" ? "UBO" : addon;
+    const addonName = getDefaultAddonName(addon);
     const addonPath = getAddonPath(addonName);
     if (fs.existsSync(addonPath)) {
       addonsList?.push(addonPath);
