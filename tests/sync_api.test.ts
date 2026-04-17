@@ -1,4 +1,18 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const pkgmanMocks = vi.hoisted(() => ({
+  camoufoxPath: vi.fn<() => Promise<string>>(),
+  launchPath: vi.fn<(browserPath?: string) => Promise<string>>(),
+}));
+
+vi.mock("../src/lib/pkgman", async () => {
+  const actual = await vi.importActual<typeof import("../src/lib/pkgman")>("../src/lib/pkgman");
+  return {
+    ...actual,
+    camoufoxPath: pkgmanMocks.camoufoxPath,
+    launchPath: pkgmanMocks.launchPath,
+  };
+});
 
 import * as asyncApi from "../src/lib/async_api";
 import * as geolocationModule from "../src/lib/geolocation";
@@ -14,6 +28,11 @@ import {
   InstalledVersion,
   installedVersionMatchesSpecifier,
 } from "../src/lib/multiversion";
+
+afterEach(() => {
+  pkgmanMocks.camoufoxPath.mockReset();
+  pkgmanMocks.launchPath.mockReset();
+});
 
 describe("sync_api", () => {
   it("exposes dedicated wrappers instead of aliasing async exports directly", () => {
@@ -94,11 +113,14 @@ describe("ported upstream helpers", () => {
         "locale:region": "US",
       }),
     } as any);
+    pkgmanMocks.camoufoxPath.mockResolvedValue("/tmp/camoufox");
+    pkgmanMocks.launchPath.mockResolvedValue("/tmp/camoufox-bin");
 
     const options = await launchOptions({
       os: "windows",
       geoip: "203.0.113.9",
       locale: "en-GB",
+      ffVersion: "140",
       config: { timezone: "Europe/London" },
     });
 

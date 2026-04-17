@@ -46,6 +46,35 @@ describe("fingerprints", () => {
     expect(generated.config["navigator.language"]).toBe("en-GB");
   });
 
+  it("prefers explicit timezone over preset timezone in per-context init scripts", () => {
+    const generated = generateContextFingerprint({
+      preset: {
+        navigator: {
+          userAgent:
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:140.0) Gecko/20100101 Firefox/140.0",
+          platform: "MacIntel",
+          hardwareConcurrency: 8,
+        },
+        screen: {
+          width: 1440,
+          height: 900,
+          colorDepth: 24,
+        },
+        timezone: "America/New_York",
+        webgl: {
+          unmaskedVendor: "Intel Inc.",
+          unmaskedRenderer: "Intel Iris OpenGL Engine",
+        },
+      },
+      ffVersion: "140",
+      timezone: "Europe/London",
+    });
+
+    expect(generated.contextOptions.timezoneId).toBe("Europe/London");
+    expect(generated.initScript).toContain('w.setTimezone("Europe/London")');
+    expect(generated.initScript).not.toContain('w.setTimezone("America/New_York")');
+  });
+
   it("loads bundled real presets", () => {
     const preset = getRandomPreset("linux");
     expect(preset).toBeTruthy();

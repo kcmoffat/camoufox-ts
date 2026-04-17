@@ -21,6 +21,7 @@ describe("locales", () => {
     handleLocales(["en-US", "fr"], config);
     expect(config["locale:region"]).toBe("US");
     expect(config["locale:language"]).toBe("en");
-    expect(config["locale:all"]).toContain("fr");
+    expect(config["locale:all"]).toContain("en-US");
+    expect(config["locale:all"]).toContain("FR");
   });
 });

@@ -480,7 +480,7 @@ export function generateContextFingerprint(input: {
     screenWidth: screen.width,
     screenHeight: screen.height,
     screenColorDepth: screen.colorDepth,
-    timezone: typeof selectedPreset?.timezone === "string" ? selectedPreset.timezone : config.timezone,
+    timezone: config.timezone ?? selectedPreset?.timezone,
     fontList: config.fonts,
     speechVoices: config.voices,
     webrtcIP: webrtcIp ?? "",
