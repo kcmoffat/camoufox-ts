@@ -142,6 +142,27 @@ describe("launchOptions", () => {
     expect(config.fonts).toContain("PingFang SC");
     expect(config.fonts).toContain("PingFang TC");
   });
+
+  it("warns when overriding the Firefox version without opting out", async () => {
+    const bundleDir = await createBundleDir();
+    mocks.camoufoxPath.mockResolvedValue(bundleDir);
+    mocks.launchPath.mockResolvedValue("/tmp/camoufox-bin");
+    const warningSpy = vi.spyOn(process, "emitWarning").mockImplementation(() => process);
+
+    await launchOptions({
+      os: "macos",
+      ffVersion: "140",
+      blockWebgl: true,
+      excludeAddons: [DefaultAddons.UBO],
+    });
+
+    expect(warningSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Spoofing the Firefox version will likely lead to detection."),
+      expect.objectContaining({ type: "LeakWarning" }),
+    );
+
+    warningSpy.mockRestore();
+  });
 });
 
 describe("generateRuntimeFontConfig", () => {

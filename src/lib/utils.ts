@@ -377,7 +377,7 @@ export async function launchOptions(input: {
 
   const ffVersionStr =
     ffVersion != null
-      ? String(ffVersion)
+      ? (LeakWarning.warn("ff_version", iKnowWhatImDoing), String(ffVersion))
       : resolveFirefoxVersion(
           await resolveVersionSourcePath({
             browserPath: requestedBrowserPath,
