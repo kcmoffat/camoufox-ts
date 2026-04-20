@@ -452,6 +452,57 @@ function walkSize(targetPath: string): number {
     .reduce((sum, value) => sum + value, 0);
 }
 
+export function resolveFetchTarget(
+  cache: Record<string, any>,
+  config: Record<string, any>,
+  version?: string,
+): { repoName?: string; verString?: string; missingChannel?: string } {
+  let repoName: string | undefined;
+  let verString: string | undefined;
+
+  if (version) {
+    const parts = version.split("/");
+    if (parts.length === 3) {
+      repoName = parts[0];
+      verString = parts[2].replace(/^v/, "");
+    } else if (parts.length === 2) {
+      repoName = parts[0];
+      verString = parts[1].replace(/^v/, "");
+    } else {
+      return {};
+    }
+    return { repoName, verString };
+  }
+
+  if (config.pinned) {
+    const channel = config.channel ?? "";
+    repoName = channel.includes("/") ? channel.split("/")[0] : channel;
+    verString = config.pinned;
+    return { repoName, verString };
+  }
+
+  const channel = config.channel ?? getDefaultChannel();
+  const [repo, channelType = "stable"] = channel.split("/");
+  repoName = repo;
+
+  for (const repoData of cache.repos ?? []) {
+    if (repoData.name.toLowerCase() !== repo.toLowerCase()) {
+      continue;
+    }
+    const candidates = (repoData.versions ?? []).filter(
+      (candidate: Record<string, any>) =>
+        Boolean(candidate.is_prerelease) === (channelType === "prerelease"),
+    );
+    if (candidates.length) {
+      verString = `${candidates[0].version}-${candidates[0].build}`;
+      return { repoName, verString };
+    }
+    return { repoName, missingChannel: channel };
+  }
+
+  return { repoName, verString };
+}
+
 export async function cli(argv = process.argv): Promise<void> {
   const program = new Command();
   program.name("camoufox").description("Camoufox TypeScript interface and package manager");
@@ -477,41 +528,14 @@ export async function cli(argv = process.argv): Promise<void> {
       const cache = loadRepoCache();
       const config = loadConfig();
 
-      let repoName: string | undefined;
-      let verString: string | undefined;
-      if (version) {
-        const parts = version.split("/");
-        if (parts.length === 3) {
-          repoName = parts[0];
-          verString = parts[2].replace(/^v/, "");
-        } else if (parts.length === 2) {
-          repoName = parts[0];
-          verString = parts[1].replace(/^v/, "");
-        } else {
-          rprint("Format: <repo>/<version> or <repo>/<channel>/<version>", "red");
-          return;
-        }
-      } else if (config.pinned) {
-        const channel = config.channel ?? "";
-        repoName = channel.includes("/") ? channel.split("/")[0] : channel;
-        verString = config.pinned;
-      } else {
-        const channel = config.channel ?? getDefaultChannel();
-        const [repo, channelType = "stable"] = channel.split("/");
-        repoName = repo;
-        for (const repoData of cache.repos ?? []) {
-          if (repoData.name.toLowerCase() !== repoName!.toLowerCase()) {
-            continue;
-          }
-          const candidates = (repoData.versions ?? []).filter(
-            (candidate: Record<string, any>) =>
-              Boolean(candidate.is_prerelease) === (channelType === "prerelease"),
-          );
-          if (candidates.length) {
-            verString = `${candidates[0].version}-${candidates[0].build}`;
-          }
-          break;
-        }
+      const { repoName, verString, missingChannel } = resolveFetchTarget(cache, config, version);
+      if (version && !repoName && !verString) {
+        rprint("Format: <repo>/<version> or <repo>/<channel>/<version>", "red");
+        return;
+      }
+      if (missingChannel) {
+        rprint(`No versions found for channel '${missingChannel}'.`, "red");
+        return;
       }
 
       if (!repoName || !verString) {

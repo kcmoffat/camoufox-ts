@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { resolveFetchTarget } from "../src/lib/__main__";
 import {
   fromBrowserforge,
   generateContextFingerprint,
@@ -79,5 +80,25 @@ describe("fingerprints", () => {
     const preset = getRandomPreset("linux");
     expect(preset).toBeTruthy();
     expect(preset?.navigator?.userAgent).toContain("Firefox");
+  });
+
+  it("reports when a followed channel has no synced versions", () => {
+    const resolved = resolveFetchTarget(
+      {
+        repos: [
+          {
+            name: "Official",
+            versions: [],
+          },
+        ],
+      },
+      {
+        channel: "official/stable",
+      },
+    );
+
+    expect(resolved.repoName).toBe("official");
+    expect(resolved.verString).toBeUndefined();
+    expect(resolved.missingChannel).toBe("official/stable");
   });
 });
