@@ -457,6 +457,30 @@ export function resolveFetchTarget(
   config: Record<string, any>,
   version?: string,
 ): { repoName?: string; verString?: string; missingChannel?: string } {
+  const resolveChannelVersion = (
+    repo: string,
+    channelType: "stable" | "prerelease",
+  ): { repoName?: string; verString?: string; missingChannel?: string } => {
+    for (const repoData of cache.repos ?? []) {
+      if (repoData.name.toLowerCase() !== repo.toLowerCase()) {
+        continue;
+      }
+      const candidates = (repoData.versions ?? []).filter(
+        (candidate: Record<string, any>) =>
+          Boolean(candidate.is_prerelease) === (channelType === "prerelease"),
+      );
+      if (candidates.length) {
+        return {
+          repoName: repo,
+          verString: `${candidates[0].version}-${candidates[0].build}`,
+        };
+      }
+      return { repoName: repo, missingChannel: `${repo}/${channelType}` };
+    }
+
+    return { repoName: repo };
+  };
+
   let repoName: string | undefined;
   let verString: string | undefined;
 
@@ -466,8 +490,12 @@ export function resolveFetchTarget(
       repoName = parts[0];
       verString = parts[2].replace(/^v/, "");
     } else if (parts.length === 2) {
-      repoName = parts[0];
-      verString = parts[1].replace(/^v/, "");
+      const [repo, selector] = parts;
+      if (selector === "stable" || selector === "prerelease") {
+        return resolveChannelVersion(repo, selector);
+      }
+      repoName = repo;
+      verString = selector.replace(/^v/, "");
     } else {
       return {};
     }
@@ -483,24 +511,11 @@ export function resolveFetchTarget(
 
   const channel = config.channel ?? getDefaultChannel();
   const [repo, channelType = "stable"] = channel.split("/");
-  repoName = repo;
-
-  for (const repoData of cache.repos ?? []) {
-    if (repoData.name.toLowerCase() !== repo.toLowerCase()) {
-      continue;
-    }
-    const candidates = (repoData.versions ?? []).filter(
-      (candidate: Record<string, any>) =>
-        Boolean(candidate.is_prerelease) === (channelType === "prerelease"),
-    );
-    if (candidates.length) {
-      verString = `${candidates[0].version}-${candidates[0].build}`;
-      return { repoName, verString };
-    }
-    return { repoName, missingChannel: channel };
+  if (channelType === "stable" || channelType === "prerelease") {
+    return resolveChannelVersion(repo, channelType);
   }
 
-  return { repoName, verString };
+  return { repoName: repo };
 }
 
 export async function cli(argv = process.argv): Promise<void> {

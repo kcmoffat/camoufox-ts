@@ -101,4 +101,45 @@ describe("fingerprints", () => {
     expect(resolved.verString).toBeUndefined();
     expect(resolved.missingChannel).toBe("official/stable");
   });
+
+  it("resolves explicit repo/channel fetch targets to the latest synced build", () => {
+    const resolved = resolveFetchTarget(
+      {
+        repos: [
+          {
+            name: "Official",
+            versions: [
+              { version: "135.0.1", build: "beta.25", is_prerelease: true },
+              { version: "135.0.1", build: "beta.24", is_prerelease: false },
+            ],
+          },
+        ],
+      },
+      {},
+      "official/stable",
+    );
+
+    expect(resolved.repoName).toBe("official");
+    expect(resolved.verString).toBe("135.0.1-beta.24");
+    expect(resolved.missingChannel).toBeUndefined();
+  });
+
+  it("reports when an explicit repo/channel fetch target has no synced builds", () => {
+    const resolved = resolveFetchTarget(
+      {
+        repos: [
+          {
+            name: "Official",
+            versions: [{ version: "135.0.1", build: "beta.25", is_prerelease: true }],
+          },
+        ],
+      },
+      {},
+      "official/stable",
+    );
+
+    expect(resolved.repoName).toBe("official");
+    expect(resolved.verString).toBeUndefined();
+    expect(resolved.missingChannel).toBe("official/stable");
+  });
 });
