@@ -163,7 +163,7 @@ export function determineUaOs(userAgent: string): "mac" | "win" | "lin" {
   return "lin";
 }
 
-export async function getScreenCons(headless?: boolean): Promise<ScreenConstraint | undefined> {
+export async function getScreenCons(headless?: boolean | "virtual"): Promise<ScreenConstraint | undefined> {
   if (headless === false) {
     return undefined;
   }
@@ -302,7 +302,7 @@ export async function launchOptions(input: {
   fingerprint?: Fingerprint;
   fingerprintPreset?: boolean | Record<string, any>;
   ffVersion?: number | string;
-  headless?: boolean;
+  headless?: boolean | "virtual";
   mainWorldEval?: boolean;
   executablePath?: string;
   browser?: string;
