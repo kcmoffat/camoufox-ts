@@ -122,10 +122,10 @@ export async function AsyncNewContext(
   } = input;
 
   let resolvedWebrtcIp = webrtcIp;
-  if (proxy && (!resolvedWebrtcIp || !("timezoneId" in contextOptions))) {
+  if (proxy && (!resolvedWebrtcIp || (timezone == null && !("timezoneId" in contextOptions)))) {
     const geo = await resolveProxyGeo(proxy);
     resolvedWebrtcIp ??= geo.ip;
-    if (!("timezoneId" in contextOptions) && geo.timezone) {
+    if (timezone == null && !("timezoneId" in contextOptions) && geo.timezone) {
       contextOptions.timezoneId = geo.timezone;
     }
   }
