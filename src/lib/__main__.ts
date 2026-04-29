@@ -518,12 +518,13 @@ export function resolveFetchTarget(
   return { repoName: repo };
 }
 
-export async function cli(argv = process.argv): Promise<void> {
+export function createCliProgram(): Command {
   const program = new Command();
   program.name("camoufox").description("Camoufox TypeScript interface and package manager");
 
   program
     .command("sync")
+    .description("Sync available versions from remote repositories")
     .option("--spoof-os <os>", "Spoof OS (auto = native)")
     .option("--spoof-arch <arch>", "Spoof architecture (auto = native)")
     .action(async (options) => {
@@ -532,6 +533,10 @@ export async function cli(argv = process.argv): Promise<void> {
 
   program
     .command("fetch")
+    .summary("Install the active version, or a specific version")
+    .description(
+      "Install the active version, or a specific version.\n\nExamples:\n  camoufox fetch\n  camoufox fetch official/135.0-beta.25\n  camoufox fetch official/stable/135.0-beta.25",
+    )
     .argument("[version]")
     .action(async (version?: string) => {
       if (fs.existsSync(INSTALL_DIR) && fs.readdirSync(INSTALL_DIR).length > 0 && !fs.existsSync(COMPAT_FLAG)) {
@@ -603,6 +608,10 @@ export async function cli(argv = process.argv): Promise<void> {
 
   program
     .command("set")
+    .summary("Set the active Camoufox version to use and fetch")
+    .description(
+      "Set the active Camoufox version to use and fetch.\n\nExamples:\n  camoufox set official/stable\n  camoufox set official/stable/134.0.2-beta.20\n  camoufox set --geoip",
+    )
     .argument("[specifier]")
     .option("--geoip", "Select GeoIP source instead")
     .action(async (specifier?: string, options?: { geoip?: boolean }) => {
@@ -702,6 +711,7 @@ export async function cli(argv = process.argv): Promise<void> {
 
   program
     .command("list")
+    .description("List Camoufox versions")
     .argument("[mode]", "installed or all", "installed")
     .option("--path", "Show full paths")
     .action((mode = "installed", options?: { path?: boolean }) => {
@@ -714,6 +724,10 @@ export async function cli(argv = process.argv): Promise<void> {
 
   program
     .command("remove")
+    .summary("Remove downloaded data, or select a specific browser version")
+    .description(
+      "Remove downloaded data, or select a specific browser version.\n\nExamples:\n  camoufox remove\n  camoufox remove --select\n  camoufox remove official/stable/134.0.2-beta.20",
+    )
     .argument("[versionPath]")
     .option("--select", "Interactively select a version to remove")
     .option("--yes, -y", "Skip confirmation prompts")
@@ -767,6 +781,7 @@ export async function cli(argv = process.argv): Promise<void> {
 
   program
     .command("test")
+    .description("Open the Playwright inspector")
     .argument("[url]")
     .option("--executable-path <path>")
     .action(async (url?: string, options?: { executablePath?: string }) => {
@@ -785,22 +800,23 @@ export async function cli(argv = process.argv): Promise<void> {
       await session.close();
     });
 
-  program.command("server").action(async () => {
+  program.command("server").description("Launch a Playwright server").action(async () => {
     await launchServer();
   });
 
   program
     .command("gui")
+    .description("Launch the Camoufox Manager GUI")
     .option("--debug", "Enable debug options in the GUI.")
     .action(async (options?: { debug?: boolean }) => {
       await launchGui(Boolean(options?.debug));
     });
 
-  program.command("version").action(() => {
+  program.command("version").description("Display version, package, browser, and storage info").action(() => {
     new VersionInfo().printAll();
   });
 
-  program.command("active").action(() => {
+  program.command("active").description("Print the current active version").action(() => {
     const config = loadConfig();
     const pinned = config.pinned;
     const channel = config.channel ?? getDefaultChannel();
@@ -824,9 +840,14 @@ export async function cli(argv = process.argv): Promise<void> {
     rprint("(not fetched)", "yellow");
   });
 
-  program.command("path").action(() => {
+  program.command("path").description("Print the install directory path").action(() => {
     console.log(INSTALL_DIR);
   });
 
+  return program;
+}
+
+export async function cli(argv = process.argv): Promise<void> {
+  const program = createCliProgram();
   await program.parseAsync(argv);
 }
