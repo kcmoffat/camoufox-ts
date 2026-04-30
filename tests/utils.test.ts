@@ -163,6 +163,31 @@ describe("launchOptions", () => {
 
     warningSpy.mockRestore();
   });
+
+  it("forces X11 environment vars when launching with a virtual display", async () => {
+    const bundleDir = await createBundleDir();
+    mocks.camoufoxPath.mockResolvedValue(bundleDir);
+    mocks.launchPath.mockResolvedValue("/tmp/camoufox-bin");
+
+    const options = await launchOptions({
+      os: "linux",
+      blockWebgl: true,
+      excludeAddons: [DefaultAddons.UBO],
+      iKnowWhatImDoing: true,
+      virtualDisplay: ":99",
+      env: {
+        DISPLAY: ":1",
+        GDK_BACKEND: "wayland",
+        WAYLAND_DISPLAY: "wayland-0",
+        MOZ_ENABLE_WAYLAND: "1",
+      },
+    });
+
+    expect(options.env.DISPLAY).toBe(":99");
+    expect(options.env.GDK_BACKEND).toBe("x11");
+    expect(options.env.WAYLAND_DISPLAY).toBeUndefined();
+    expect(options.env.MOZ_ENABLE_WAYLAND).toBe("0");
+  });
 });
 
 describe("generateRuntimeFontConfig", () => {

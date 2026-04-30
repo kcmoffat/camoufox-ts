@@ -358,6 +358,11 @@ export async function launchOptions(input: {
 
   if (virtualDisplay) {
     environment.DISPLAY = virtualDisplay;
+    // Xvfb exposes an X11 display. Force GTK/Firefox to honor it even when the
+    // host session exports Wayland-specific environment variables.
+    environment.GDK_BACKEND = "x11";
+    delete environment.WAYLAND_DISPLAY;
+    environment.MOZ_ENABLE_WAYLAND = "0";
   }
 
   if (!iKnowWhatImDoing) {
