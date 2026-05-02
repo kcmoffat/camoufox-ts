@@ -19,10 +19,20 @@ import * as geolocationModule from "../src/lib/geolocation";
 import { generateContextFingerprint } from "../src/lib/fingerprints";
 import { Version } from "../src/lib/pkgman";
 import {
+  Camoufox as RootCamoufox,
+  NewBrowser as RootNewBrowser,
+  NewContext as RootNewContext,
+} from "../src";
+import {
   Camoufox,
   NewBrowser,
   NewContext,
 } from "../src/lib/sync_api";
+import {
+  AsyncCamoufox,
+  AsyncNewBrowser,
+  AsyncNewContext,
+} from "../src";
 import { launchOptions, launch_options } from "../src/lib/utils";
 import {
   InstalledVersion,
@@ -39,6 +49,15 @@ describe("sync_api", () => {
     expect(NewBrowser).not.toBe(asyncApi.AsyncNewBrowser);
     expect(NewContext).not.toBe(asyncApi.AsyncNewContext);
     expect(Camoufox).not.toBe(asyncApi.AsyncCamoufox);
+  });
+
+  it("maps top-level exports to python-style sync and async names", () => {
+    expect(RootNewBrowser).toBe(NewBrowser);
+    expect(RootNewContext).toBe(NewContext);
+    expect(RootCamoufox).toBe(Camoufox);
+    expect(AsyncNewBrowser).toBe(asyncApi.AsyncNewBrowser);
+    expect(AsyncNewContext).toBe(asyncApi.AsyncNewContext);
+    expect(AsyncCamoufox).toBe(asyncApi.AsyncCamoufox);
   });
 
   it("routes browser startup through the sync surface", async () => {

@@ -156,7 +156,3 @@ export async function AsyncNewContext(
   await context.addInitScript(fingerprint.initScript);
   return context;
 }
-
-export const NewBrowser = AsyncNewBrowser;
-export const NewContext = AsyncNewContext;
-export class Camoufox extends AsyncCamoufox {}
