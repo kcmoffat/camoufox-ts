@@ -9,6 +9,7 @@ import {
   CamoufoxUpdate,
   doSync,
   findInstalled,
+  resolveFetchTarget,
   setChannel,
   setPinned,
 } from "../__main__";
@@ -234,38 +235,10 @@ export class GuiBackend {
   } {
     const cache = loadRepoCache();
     const config = loadConfig();
-    let repoName = "";
-    let fullVersion = "";
-
-    if (specifier) {
-      const parts = specifier.split("/");
-      if (parts.length === 3) {
-        repoName = parts[0];
-        fullVersion = parts[2].replace(/^v/, "");
-      } else if (parts.length === 2) {
-        repoName = parts[0];
-        fullVersion = parts[1].replace(/^v/, "");
-      }
-    } else if (config.pinned) {
-      repoName = (config.channel ?? "official/stable").split("/")[0];
-      fullVersion = config.pinned;
-    } else {
-      const [channelRepo, channelType = "stable"] = (config.channel ?? "official/stable").split("/");
-      repoName = channelRepo;
-      const repo = (cache.repos ?? []).find(
-        (entry: Record<string, any>) => entry.name.toLowerCase() === repoName.toLowerCase(),
-      );
-      const candidate = (repo?.versions ?? []).find(
-        (entry: Record<string, any>) =>
-          Boolean(entry.is_prerelease) === (channelType === "prerelease"),
-      );
-      if (candidate) {
-        fullVersion = `${candidate.version}-${candidate.build}`;
-      }
-    }
+    const { repoName, verString: fullVersion } = resolveFetchTarget(cache, config, specifier);
 
     const repo = (cache.repos ?? []).find(
-      (entry: Record<string, any>) => entry.name.toLowerCase() === repoName.toLowerCase(),
+      (entry: Record<string, any>) => entry.name.toLowerCase() === repoName?.toLowerCase(),
     );
     const candidate = (repo?.versions ?? []).find(
       (entry: Record<string, any>) => `${entry.version}-${entry.build}` === fullVersion,
