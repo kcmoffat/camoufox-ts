@@ -4,6 +4,7 @@ import path from "node:path";
 import { Browser, BrowserContext, firefox, type LaunchOptions } from "playwright";
 import { ProxyAgent, fetch as undiciFetch } from "undici";
 
+import { normalizeSnakeCaseKeys } from "./case";
 import { generateContextFingerprint } from "./fingerprints";
 import { launchOptions, attachVirtualDisplay } from "./utils";
 import { VirtualDisplay } from "./virtdisplay";
@@ -33,6 +34,7 @@ export class AsyncCamoufox {
 }
 
 export async function AsyncNewBrowser(input: Record<string, any> = {}): Promise<CamoufoxBrowser> {
+  const normalizedInput = normalizeSnakeCaseKeys(input);
   const {
     headless,
     fromOptions,
@@ -40,7 +42,7 @@ export async function AsyncNewBrowser(input: Record<string, any> = {}): Promise<
     debug,
     userDataDir,
     ...kwargs
-  } = input;
+  } = normalizedInput;
 
   let virtualDisplay: VirtualDisplay | undefined;
   let nextHeadless = headless;
@@ -109,6 +111,7 @@ export async function AsyncNewContext(
     [key: string]: any;
   } = {},
 ): Promise<BrowserContext> {
+  const normalizedInput = normalizeSnakeCaseKeys(input);
   const {
     preset,
     os,
@@ -119,7 +122,7 @@ export async function AsyncNewContext(
     proxy,
     geolocation,
     ...contextOptions
-  } = input;
+  } = normalizedInput;
 
   let resolvedWebrtcIp = webrtcIp;
   if (proxy && (!resolvedWebrtcIp || (timezone == null && !("timezoneId" in contextOptions)))) {

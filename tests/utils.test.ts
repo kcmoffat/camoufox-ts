@@ -188,6 +188,25 @@ describe("launchOptions", () => {
     expect(options.env.WAYLAND_DISPLAY).toBeUndefined();
     expect(options.env.MOZ_ENABLE_WAYLAND).toBe("0");
   });
+
+  it("accepts python-style snake_case launch kwargs", async () => {
+    const bundleDir = await createBundleDir();
+    mocks.camoufoxPath.mockResolvedValue(bundleDir);
+    mocks.launchPath.mockResolvedValue("/tmp/camoufox-bin");
+
+    const options = await launchOptions({
+      fingerprint_preset: FIREFOX_PRESET,
+      block_webgl: true,
+      firefox_user_prefs: {
+        "network.http.http3.enable": false,
+      },
+      enable_cache: true,
+      i_know_what_im_doing: true,
+    });
+
+    expect(options.firefoxUserPrefs["network.http.http3.enable"]).toBe(false);
+    expect(options.firefoxUserPrefs["browser.cache.memory.enable"]).toBe(true);
+  });
 });
 
 describe("generateRuntimeFontConfig", () => {

@@ -7,6 +7,7 @@ import systeminformation from "systeminformation";
 import { UAParser } from "ua-parser-js";
 import type { Fingerprint } from "fingerprint-generator";
 
+import { normalizeSnakeCaseKeys } from "./case";
 import { DefaultAddons, addDefaultAddons, confirmPaths } from "./addons";
 import { LeakWarning } from "./_warnings";
 import {
@@ -316,6 +317,7 @@ export async function launchOptions(input: {
   virtualDisplay?: string;
   [key: string]: any;
 }): Promise<Record<string, any>> {
+  const normalizedInput = normalizeSnakeCaseKeys(input);
   const {
     config: passedConfig,
     os,
@@ -350,7 +352,7 @@ export async function launchOptions(input: {
     debug,
     virtualDisplay,
     ...extraLaunchOptions
-  } = input;
+  } = normalizedInput;
 
   const config = passedConfig ?? {};
   const environment = { ...env } as Record<string, string>;

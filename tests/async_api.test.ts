@@ -70,6 +70,24 @@ describe("AsyncNewBrowser", () => {
     expect(launchMock).toHaveBeenCalledWith({ headless: false, env: {} });
     expect(result).toBe(browser);
   });
+
+  it("accepts python-style snake_case browser kwargs", async () => {
+    const context = { close: vi.fn().mockResolvedValue(undefined) };
+    launchPersistentContextMock.mockResolvedValue(context);
+
+    const result = await AsyncNewBrowser({
+      from_options: { headless: true },
+      persistent_context: true,
+      user_data_dir: "/tmp/camoufox-profile",
+    });
+
+    expect(launchOptionsMock).not.toHaveBeenCalled();
+    expect(launchPersistentContextMock).toHaveBeenCalledWith(
+      "/tmp/camoufox-profile",
+      { headless: true },
+    );
+    expect(result).toBe(context);
+  });
 });
 
 describe("AsyncNewContext", () => {
@@ -116,5 +134,42 @@ describe("AsyncNewContext", () => {
       proxy: { server: "http://proxy.example:8080" },
     });
     expect(context.addInitScript).toHaveBeenCalledWith("/* init */");
+  });
+
+  it("accepts python-style snake_case context kwargs", async () => {
+    const context = {
+      addInitScript: vi.fn().mockResolvedValue(undefined),
+    };
+    const browser = {
+      newContext: vi.fn().mockResolvedValue(context),
+    } as any;
+
+    generateContextFingerprintMock.mockReturnValue({
+      initScript: "/* init */",
+      contextOptions: {
+        userAgent: "Mozilla/5.0",
+      },
+    });
+
+    await AsyncNewContext(browser, {
+      ff_version: "140",
+      webrtc_ip: "203.0.113.9",
+      proxy: { server: "http://proxy.example:8080" },
+      extra_http_headers: { "x-test": "1" },
+    });
+
+    expect(generateContextFingerprintMock).toHaveBeenCalledWith({
+      preset: undefined,
+      os: undefined,
+      ffVersion: "140",
+      webrtcIp: "203.0.113.9",
+      timezone: undefined,
+      locale: undefined,
+    });
+    expect(browser.newContext).toHaveBeenCalledWith({
+      userAgent: "Mozilla/5.0",
+      proxy: { server: "http://proxy.example:8080" },
+      extraHttpHeaders: { "x-test": "1" },
+    });
   });
 });
