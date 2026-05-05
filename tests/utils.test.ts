@@ -214,6 +214,7 @@ describe("generateRuntimeFontConfig", () => {
     const bundleDir = await createBundleDir();
     const fontConfigDir = path.join(bundleDir, "fontconfigs", "linux");
     const fontsDir = path.join(bundleDir, "fonts");
+    const homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(bundleDir);
     await fsp.mkdir(fontConfigDir, { recursive: true });
     await fsp.mkdir(fontsDir, { recursive: true });
     await fsp.writeFile(
@@ -227,8 +228,10 @@ describe("generateRuntimeFontConfig", () => {
     const runtimePath = await generateRuntimeFontConfig(fontConfigDir);
     const runtimeContent = await fsp.readFile(runtimePath, "utf8");
 
-    expect(runtimePath).toContain(path.join("fontconfig", "fonts-"));
+    expect(runtimePath).toContain(path.join(".cache", "camoufox", "fontconfig", "fonts-"));
     expect(runtimeContent).toContain(`<dir>${fontsDir}</dir>`);
     expect(runtimeContent).not.toContain('prefix="cwd"');
+
+    homedirSpy.mockRestore();
   });
 });

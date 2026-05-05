@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import crypto from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 
 import systeminformation from "systeminformation";
@@ -82,7 +83,7 @@ export async function generateRuntimeFontConfig(fontConfigPath: string): Promise
     `<dir>${fontsDir}</dir>`,
   );
 
-  const cacheDir = path.join(INSTALL_DIR, "fontconfig");
+  const cacheDir = path.join(os.homedir(), ".cache", "camoufox", "fontconfig");
   await fsp.mkdir(cacheDir, { recursive: true });
 
   const contentHash = crypto.createHash("sha256").update(runtimeContent).digest("hex").slice(0, 12);
