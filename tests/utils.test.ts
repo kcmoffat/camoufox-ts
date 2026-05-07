@@ -26,7 +26,12 @@ vi.mock("../src/lib/pkgman", async () => {
   };
 });
 
-import { determineUaOs, generateRuntimeFontConfig, launchOptions } from "../src/lib/utils";
+import {
+  determineUaOs,
+  generateRuntimeFontConfig,
+  launchOptions,
+  validateConfig,
+} from "../src/lib/utils";
 
 const FIREFOX_PRESET = {
   navigator: {
@@ -206,6 +211,18 @@ describe("launchOptions", () => {
 
     expect(options.firefoxUserPrefs["network.http.http3.enable"]).toBe(false);
     expect(options.firefoxUserPrefs["browser.cache.memory.enable"]).toBe(true);
+  });
+
+  it("skips deprecated properties removed upstream", async () => {
+    const bundleDir = await createBundleDir();
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await expect(
+      validateConfig({ enableRemoteSubframes: true }, path.join(bundleDir, "camoufox-bin")),
+    ).resolves.toBeUndefined();
+    expect(consoleSpy).toHaveBeenCalledWith("Skipping unknown patch enableRemoteSubframes : true");
+
+    consoleSpy.mockRestore();
   });
 });
 
