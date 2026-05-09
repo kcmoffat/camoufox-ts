@@ -1,6 +1,4 @@
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 
 import which from "which";
@@ -16,6 +14,9 @@ export class VirtualDisplay {
   readonly debug: boolean;
   proc?: ChildProcess;
   private displayNumber?: number;
+  private displayPromise?: Promise<number>;
+  private static readonly displayFd = 3;
+  private static readonly displayReadTimeoutMs = 10_000;
 
   static readonly xvfbArgs = [
     "-screen",
@@ -36,7 +37,6 @@ export class VirtualDisplay {
     "XVideo-MotionCompensation",
     "-extension",
     "XINERAMA",
-    "-shmem",
     "-fp",
     "built-ins",
     "-nocursor",
@@ -58,60 +58,125 @@ export class VirtualDisplay {
     return resolved;
   }
 
-  get xvfbCmd(): string[] {
-    return [this.xvfbPath, `:${this.display}`, ...VirtualDisplay.xvfbArgs];
-  }
-
-  get display(): number {
-    if (this.displayNumber == null) {
-      this.displayNumber = VirtualDisplay.freeDisplay();
-    }
-    return this.displayNumber;
-  }
-
-  get(): string {
+  async get(): Promise<string> {
     VirtualDisplay.assertLinux();
-    if (!this.proc) {
-      if (this.debug) {
-        console.log("Starting virtual display:", this.xvfbCmd.join(" "));
-      }
-      this.proc = spawn(this.xvfbCmd[0], this.xvfbCmd.slice(1), {
-        stdio: this.debug ? "inherit" : "ignore",
-        detached: true,
-      });
-      this.proc.unref();
+    if (!this.displayPromise) {
+      this.displayPromise = this.start();
     } else if (this.debug) {
-      console.log(`Using virtual display: ${this.display}`);
+      console.log(`Using virtual display: ${this.displayNumber ?? "starting"}`);
     }
-    return `:${this.display}`;
+
+    try {
+      this.displayNumber = await this.displayPromise;
+    } catch (error) {
+      this.displayPromise = undefined;
+      throw error;
+    }
+
+    return `:${this.displayNumber}`;
+  }
+
+  private start(): Promise<number> {
+    const cmd = [
+      this.xvfbPath,
+      "-displayfd",
+      String(VirtualDisplay.displayFd),
+      ...VirtualDisplay.xvfbArgs,
+    ];
+
+    if (this.debug) {
+      console.log("Starting virtual display:", cmd.join(" "));
+    }
+
+    this.proc = spawn(cmd[0], cmd.slice(1), {
+      stdio: [
+        "ignore",
+        this.debug ? "inherit" : "ignore",
+        this.debug ? "inherit" : "ignore",
+        "pipe",
+      ],
+      detached: true,
+      env: {
+        ...process.env,
+        __GLX_VENDOR_LIBRARY_NAME: "mesa",
+        LIBGL_ALWAYS_SOFTWARE: "1",
+      },
+    });
+    this.proc.unref();
+
+    const displayPipe = this.proc.stdio[VirtualDisplay.displayFd];
+    if (!displayPipe) {
+      this.kill();
+      throw new CannotExecuteXvfb("Xvfb did not expose a display pipe");
+    }
+
+    return new Promise<number>((resolve, reject) => {
+      let buffer = "";
+      let settled = false;
+
+      const fail = (message: string): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+        this.kill();
+        reject(new CannotExecuteXvfb(message));
+      };
+
+      const succeed = (value: number): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+        resolve(value);
+      };
+
+      const timeout = setTimeout(() => {
+        fail(`Xvfb did not report a display within ${VirtualDisplay.displayReadTimeoutMs}ms`);
+      }, VirtualDisplay.displayReadTimeoutMs);
+
+      displayPipe.on("data", (chunk: string | Buffer) => {
+        if (settled) {
+          return;
+        }
+
+        buffer += chunk.toString();
+        if (!buffer.includes("\n")) {
+          return;
+        }
+
+        const display = Number.parseInt(buffer.trim(), 10);
+        if (!Number.isInteger(display)) {
+          fail(`Xvfb wrote non-integer display: ${JSON.stringify(buffer)}`);
+          return;
+        }
+
+        succeed(display);
+      });
+
+      displayPipe.once("close", () => {
+        if (!settled && !buffer.includes("\n")) {
+          fail(
+            `Xvfb did not report a display (got ${JSON.stringify(buffer)}, exit=${this.proc?.exitCode ?? null})`,
+          );
+        }
+      });
+
+      displayPipe.once("error", (error) => {
+        fail(`Failed reading Xvfb display pipe: ${error.message}`);
+      });
+    });
   }
 
   kill(): void {
     if (this.proc && this.proc.exitCode == null && !this.proc.killed) {
       if (this.debug) {
-        console.log("Terminating virtual display:", this.display);
+        console.log("Terminating virtual display:", this.displayNumber);
       }
       this.proc.kill();
     }
-  }
-
-  private static getLockFiles(): string[] {
-    const tmpDir = process.env.TMPDIR ?? os.tmpdir();
-    try {
-      return fs
-        .readdirSync(tmpDir)
-        .filter((entry) => /^\.X\d+-lock$/.test(entry))
-        .map((entry) => path.join(tmpDir, entry));
-    } catch {
-      return [];
-    }
-  }
-
-  private static freeDisplay(): number {
-    const displays = VirtualDisplay.getLockFiles().map((lockFile) =>
-      Number.parseInt(lockFile.split("X")[1].split("-")[0], 10),
-    );
-    return displays.length ? Math.max(99, Math.max(...displays) + randInt(3, 20)) : 99;
   }
 
   static assertLinux(): void {
@@ -119,8 +184,4 @@ export class VirtualDisplay {
       throw new VirtualDisplayNotSupported("Virtual display is only supported on Linux.");
     }
   }
-}
-
-function randInt(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min)) + min;
 }

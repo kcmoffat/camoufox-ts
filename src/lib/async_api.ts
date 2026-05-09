@@ -48,7 +48,7 @@ export async function AsyncNewBrowser(input: Record<string, any> = {}): Promise<
   let nextHeadless = headless;
   if (headless === "virtual") {
     virtualDisplay = new VirtualDisplay(debug);
-    kwargs.virtualDisplay = virtualDisplay.get();
+    kwargs.virtualDisplay = await virtualDisplay.get();
     nextHeadless = false;
   }
 
