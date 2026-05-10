@@ -400,8 +400,17 @@ export function generateContextFingerprint(input: {
   webrtcIp?: string;
   timezone?: string;
   locale?: string;
+  configOverrides?: Record<string, any>;
 }): Record<string, any> {
-  const { preset, os, ffVersion, webrtcIp, timezone: explicitTimezone, locale } = input;
+  const {
+    preset,
+    os,
+    ffVersion,
+    webrtcIp,
+    timezone: explicitTimezone,
+    locale,
+    configOverrides,
+  } = input;
   let config: Record<string, any>;
   let nav: Record<string, any>;
   let screen: Record<string, any>;
@@ -465,6 +474,9 @@ export function generateContextFingerprint(input: {
     Object.assign(config, parsedLocale.asConfig(), {
       "navigator.language": parsedLocale.asString,
     });
+  }
+  if (configOverrides) {
+    Object.assign(config, configOverrides);
   }
 
   const initValues = {

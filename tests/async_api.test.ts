@@ -172,4 +172,43 @@ describe("AsyncNewContext", () => {
       extraHttpHeaders: { "x-test": "1" },
     });
   });
+
+  it("passes config overrides into fingerprint generation without leaking them to Playwright", async () => {
+    const context = {
+      addInitScript: vi.fn().mockResolvedValue(undefined),
+    };
+    const browser = {
+      newContext: vi.fn().mockResolvedValue(context),
+    } as any;
+
+    generateContextFingerprintMock.mockReturnValue({
+      initScript: "/* init */",
+      contextOptions: {
+        userAgent: "Mozilla/5.0",
+      },
+    });
+
+    await AsyncNewContext(browser, {
+      config_overrides: {
+        "fonts:spacing_seed": 0,
+      },
+      color_scheme: "dark",
+    });
+
+    expect(generateContextFingerprintMock).toHaveBeenCalledWith({
+      preset: undefined,
+      os: undefined,
+      ffVersion: undefined,
+      webrtcIp: undefined,
+      timezone: undefined,
+      locale: undefined,
+      configOverrides: {
+        "fonts:spacing_seed": 0,
+      },
+    });
+    expect(browser.newContext).toHaveBeenCalledWith({
+      userAgent: "Mozilla/5.0",
+      colorScheme: "dark",
+    });
+  });
 });

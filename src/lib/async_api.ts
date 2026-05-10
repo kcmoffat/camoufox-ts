@@ -106,6 +106,7 @@ export async function AsyncNewContext(
     webrtcIp?: string;
     timezone?: string;
     locale?: string;
+    configOverrides?: Record<string, any>;
     proxy?: Record<string, string>;
     geolocation?: { latitude: number; longitude: number };
     [key: string]: any;
@@ -119,6 +120,7 @@ export async function AsyncNewContext(
     webrtcIp,
     timezone,
     locale,
+    configOverrides,
     proxy,
     geolocation,
     ...contextOptions
@@ -140,6 +142,7 @@ export async function AsyncNewContext(
     webrtcIp: resolvedWebrtcIp,
     timezone,
     locale,
+    configOverrides,
   });
 
   const options = {

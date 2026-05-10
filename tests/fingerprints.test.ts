@@ -76,6 +76,26 @@ describe("fingerprints", () => {
     expect(generated.initScript).not.toContain('w.setTimezone("America/New_York")');
   });
 
+  it("applies config overrides before rendering the init script", () => {
+    const generated = generateContextFingerprint({
+      os: "windows",
+      ffVersion: "140",
+      timezone: "Europe/London",
+      locale: "en-GB",
+      configOverrides: {
+        "fonts:spacing_seed": 0,
+        timezone: "America/Los_Angeles",
+        "navigator.language": "fr-CA",
+      },
+    });
+
+    expect(generated.config["fonts:spacing_seed"]).toBe(0);
+    expect(generated.config.timezone).toBe("America/Los_Angeles");
+    expect(generated.contextOptions.timezoneId).toBe("America/Los_Angeles");
+    expect(generated.contextOptions.locale).toBe("fr-CA");
+    expect(generated.initScript).toContain('w.setTimezone("America/Los_Angeles")');
+  });
+
   it("loads bundled real presets", () => {
     const preset = getRandomPreset("linux");
     expect(preset).toBeTruthy();
