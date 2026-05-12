@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DefaultAddons } from "../src/lib/addons";
+import * as fingerprints from "../src/lib/fingerprints";
 
 const mocks = vi.hoisted(() => ({
   camoufoxPath: vi.fn<() => Promise<string>>(),
@@ -211,6 +212,28 @@ describe("launchOptions", () => {
 
     expect(options.firefoxUserPrefs["network.http.http3.enable"]).toBe(false);
     expect(options.firefoxUserPrefs["browser.cache.memory.enable"]).toBe(true);
+  });
+
+  it("passes the resolved Firefox version into bundled preset selection", async () => {
+    const bundleDir = await createBundleDir();
+    await fsp.writeFile(
+      path.join(bundleDir, "version.json"),
+      JSON.stringify({ version: "150.0.2", build: "beta.25" }),
+    );
+    mocks.camoufoxPath.mockResolvedValue(bundleDir);
+    mocks.launchPath.mockResolvedValue("/tmp/camoufox-bin");
+    const presetSpy = vi.spyOn(fingerprints, "getRandomPreset");
+
+    await launchOptions({
+      os: "linux",
+      fingerprintPreset: true,
+      blockWebgl: true,
+      excludeAddons: [DefaultAddons.UBO],
+      iKnowWhatImDoing: true,
+    });
+
+    expect(presetSpy).toHaveBeenCalledWith("linux", "150");
+    presetSpy.mockRestore();
   });
 
   it("skips deprecated properties removed upstream", async () => {

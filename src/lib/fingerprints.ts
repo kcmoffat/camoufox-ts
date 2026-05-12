@@ -27,7 +27,9 @@ const FP_GENERATOR = new FingerprintGenerator({
 });
 
 const PRESETS_FILE = assetPath("fingerprint-presets.json");
-let presetsCache: Record<string, any> | undefined;
+const PRESETS_V150_FILE = assetPath("fingerprint-presets-v150.json");
+const PRESETS_V150_MIN_FF = 149;
+const presetsCache = new Map<string, Record<string, any>>();
 let fontsCache: Record<string, string[]> | undefined;
 let voicesCache: Record<string, string[]> | undefined;
 
@@ -205,15 +207,37 @@ export function generateRandomVoiceSubset(targetOs: string): string[] {
   return Array.from(new Set(result));
 }
 
-export function loadPresets(): Record<string, any> | undefined {
-  if (!presetsCache && fs.existsSync(PRESETS_FILE)) {
-    presetsCache = JSON.parse(fs.readFileSync(PRESETS_FILE, "utf8")) as Record<string, any>;
+function selectPresetsFile(ffVersion?: string | number): string {
+  const majorVersion = Number.parseInt(String(ffVersion ?? ""), 10);
+  if (
+    Number.isFinite(majorVersion) &&
+    majorVersion >= PRESETS_V150_MIN_FF &&
+    fs.existsSync(PRESETS_V150_FILE)
+  ) {
+    return PRESETS_V150_FILE;
   }
-  return presetsCache;
+  return PRESETS_FILE;
 }
 
-export function getRandomPreset(os?: string | string[]): Record<string, any> | undefined {
-  const presets = loadPresets();
+export function loadPresets(ffVersion?: string | number): Record<string, any> | undefined {
+  const presetsFile = selectPresetsFile(ffVersion);
+  const cached = presetsCache.get(presetsFile);
+  if (cached) {
+    return cached;
+  }
+  if (!fs.existsSync(presetsFile)) {
+    return undefined;
+  }
+  const loaded = JSON.parse(fs.readFileSync(presetsFile, "utf8")) as Record<string, any>;
+  presetsCache.set(presetsFile, loaded);
+  return loaded;
+}
+
+export function getRandomPreset(
+  os?: string | string[],
+  ffVersion?: string | number,
+): Record<string, any> | undefined {
+  const presets = loadPresets(ffVersion);
   if (!presets) {
     return undefined;
   }

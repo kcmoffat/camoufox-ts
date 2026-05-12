@@ -400,7 +400,9 @@ export async function launchOptions(input: {
     }
   } else if (fingerprintPreset != null) {
     const preset =
-      typeof fingerprintPreset === "object" ? fingerprintPreset : getRandomPreset(os as string | string[]);
+      typeof fingerprintPreset === "object"
+        ? fingerprintPreset
+        : getRandomPreset(os as string | string[], ffVersionStr);
     if (preset) {
       mergeInto(config, fromPreset(preset, ffVersionStr));
       usedPreset = true;

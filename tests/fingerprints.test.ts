@@ -6,6 +6,7 @@ import {
   generateContextFingerprint,
   generateFingerprint,
   getRandomPreset,
+  loadPresets,
 } from "../src/lib/fingerprints";
 
 describe("fingerprints", () => {
@@ -100,6 +101,15 @@ describe("fingerprints", () => {
     const preset = getRandomPreset("linux");
     expect(preset).toBeTruthy();
     expect(preset?.navigator?.userAgent).toContain("Firefox");
+  });
+
+  it("uses the v150 preset bundle for Firefox 149 and newer", () => {
+    const legacyPresets = loadPresets("148");
+    const v150Presets = loadPresets("149");
+
+    expect(legacyPresets?.presets?.linux).toHaveLength(18);
+    expect(v150Presets?.presets?.linux).toHaveLength(65);
+    expect(getRandomPreset("linux", "149")).toBeTruthy();
   });
 
   it("reports when a followed channel has no synced versions", () => {
