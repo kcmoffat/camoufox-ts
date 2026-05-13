@@ -112,6 +112,23 @@ describe("fingerprints", () => {
     expect(getRandomPreset("linux", "149")).toBeTruthy();
   });
 
+  it("keeps the v150 preset bundle aligned with upstream coverage", () => {
+    const v150Presets = loadPresets("149");
+    const allPresets = Object.values(v150Presets?.presets ?? {}).flat() as Array<Record<string, any>>;
+    const versions = Array.from(
+      new Set(
+        allPresets
+          .map((preset) => preset.navigator?.userAgent?.match(/Firefox\/(\d+\.0)/)?.[1])
+          .filter(Boolean),
+      ),
+    ).sort();
+
+    expect(v150Presets?.presets?.macos).toHaveLength(67);
+    expect(v150Presets?.presets?.windows).toHaveLength(180);
+    expect(v150Presets?.presets?.linux).toHaveLength(65);
+    expect(versions).toEqual(["149.0", "150.0", "151.0", "152.0"]);
+  });
+
   it("reports when a followed channel has no synced versions", () => {
     const resolved = resolveFetchTarget(
       {
