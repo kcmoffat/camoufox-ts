@@ -97,6 +97,51 @@ describe("fingerprints", () => {
     expect(generated.initScript).toContain('w.setTimezone("America/Los_Angeles")');
   });
 
+  it("applies config overrides to init-script setters and viewport options", () => {
+    const generated = generateContextFingerprint({
+      preset: {
+        navigator: {
+          userAgent:
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:140.0) Gecko/20100101 Firefox/140.0",
+          platform: "MacIntel",
+          hardwareConcurrency: 8,
+        },
+        screen: {
+          width: 1440,
+          height: 900,
+          colorDepth: 24,
+        },
+        webgl: {
+          unmaskedVendor: "Intel Inc.",
+          unmaskedRenderer: "Intel Iris OpenGL Engine",
+        },
+      },
+      configOverrides: {
+        "navigator.userAgent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0",
+        "navigator.platform": "Win32",
+        "navigator.hardwareConcurrency": 16,
+        "screen.width": 1280,
+        "screen.height": 720,
+        "screen.colorDepth": 30,
+        "webGl:vendor": "Override Vendor",
+        "webGl:renderer": "Override Renderer",
+      },
+    });
+
+    expect(generated.contextOptions.userAgent).toContain("Windows NT 10.0");
+    expect(generated.contextOptions.viewport).toEqual({
+      width: 1280,
+      height: 692,
+    });
+    expect(generated.initScript).toContain('w.setNavigatorPlatform("Win32")');
+    expect(generated.initScript).toContain("w.setNavigatorHardwareConcurrency(16)");
+    expect(generated.initScript).toContain('w.setWebGLVendor("Override Vendor")');
+    expect(generated.initScript).toContain('w.setWebGLRenderer("Override Renderer")');
+    expect(generated.initScript).toContain("w.setScreenDimensions(1280, 720)");
+    expect(generated.initScript).toContain("w.setScreenColorDepth(30)");
+  });
+
   it("loads bundled real presets", () => {
     const preset = getRandomPreset("linux");
     expect(preset).toBeTruthy();

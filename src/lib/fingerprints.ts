@@ -503,20 +503,30 @@ export function generateContextFingerprint(input: {
     Object.assign(config, configOverrides);
   }
 
+  const navigatorPlatform = config["navigator.platform"] ?? nav.platform;
+  const hardwareConcurrency =
+    config["navigator.hardwareConcurrency"] ?? nav.hardwareConcurrency;
+  const webglVendor = config["webGl:vendor"] ?? webgl.unmaskedVendor;
+  const webglRenderer = config["webGl:renderer"] ?? webgl.unmaskedRenderer;
+  const screenWidth = config["screen.width"] ?? screen.width;
+  const screenHeight = config["screen.height"] ?? screen.height;
+  const screenColorDepth = config["screen.colorDepth"] ?? screen.colorDepth;
+  const timezoneId = config.timezone ?? selectedPreset?.timezone;
+
   const initValues = {
     fontSpacingSeed: config["fonts:spacing_seed"],
     audioFingerprintSeed: config["audio:seed"],
     canvasSeed: config["canvas:seed"],
-    navigatorPlatform: nav.platform,
+    navigatorPlatform,
     navigatorOscpu: config["navigator.oscpu"],
     navigatorUserAgent: config["navigator.userAgent"],
-    hardwareConcurrency: nav.hardwareConcurrency ?? config["navigator.hardwareConcurrency"],
-    webglVendor: webgl.unmaskedVendor,
-    webglRenderer: webgl.unmaskedRenderer,
-    screenWidth: screen.width,
-    screenHeight: screen.height,
-    screenColorDepth: screen.colorDepth,
-    timezone: config.timezone ?? selectedPreset?.timezone,
+    hardwareConcurrency,
+    webglVendor,
+    webglRenderer,
+    screenWidth,
+    screenHeight,
+    screenColorDepth,
+    timezone: timezoneId,
     fontList: config.fonts,
     speechVoices: config.voices,
     webrtcIP: webrtcIp ?? "",
@@ -528,16 +538,15 @@ export function generateContextFingerprint(input: {
   if (config["navigator.userAgent"]) {
     contextOptions.userAgent = config["navigator.userAgent"];
   }
-  if (screen.width && screen.height) {
+  if (screenWidth && screenHeight) {
     contextOptions.viewport = {
-      width: screen.width,
-      height: Math.max(screen.height - 28, 600),
+      width: screenWidth,
+      height: Math.max(screenHeight - 28, 600),
     };
   }
   if (screen.devicePixelRatio) {
     contextOptions.deviceScaleFactor = screen.devicePixelRatio;
   }
-  const timezoneId = config.timezone ?? selectedPreset?.timezone;
   if (timezoneId) {
     contextOptions.timezoneId = timezoneId;
   }
