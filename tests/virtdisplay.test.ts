@@ -81,6 +81,21 @@ describe("VirtualDisplay", () => {
     expect(child.unref).toHaveBeenCalledOnce();
   });
 
+  it("returns the same display on repeated get calls after startup completes", async () => {
+    const { child, pipe } = createChild();
+
+    whichSyncMock.mockReturnValue(process.execPath);
+    spawnMock.mockReturnValue(child);
+
+    const display = new VirtualDisplay();
+    const first = display.get();
+    pipe.end("204\n");
+
+    await expect(first).resolves.toBe(":204");
+    await expect(display.get()).resolves.toBe(":204");
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+  });
+
   it("reuses one in-flight startup when get is called concurrently", async () => {
     const { child, pipe } = createChild();
 
@@ -110,5 +125,28 @@ describe("VirtualDisplay", () => {
       new CannotExecuteXvfb("Xvfb did not report a display (got \"\", exit=1)"),
     );
     expect(child.kill).not.toHaveBeenCalled();
+  });
+
+  it("starts a fresh Xvfb process for a new virtual display after the prior one is killed", async () => {
+    const firstChild = createChild();
+    const secondChild = createChild();
+
+    whichSyncMock.mockReturnValue(process.execPath);
+    spawnMock.mockReturnValueOnce(firstChild.child).mockReturnValueOnce(secondChild.child);
+
+    const firstDisplay = new VirtualDisplay();
+    const firstGet = firstDisplay.get();
+    firstChild.pipe.end("117\n");
+
+    await expect(firstGet).resolves.toBe(":117");
+
+    firstDisplay.kill();
+    expect(firstChild.child.kill).toHaveBeenCalledOnce();
+
+    const secondGet = new VirtualDisplay().get();
+    secondChild.pipe.end("118\n");
+
+    await expect(secondGet).resolves.toBe(":118");
+    expect(spawnMock).toHaveBeenCalledTimes(2);
   });
 });
