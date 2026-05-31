@@ -236,6 +236,27 @@ describe("launchOptions", () => {
     presetSpy.mockRestore();
   });
 
+  it("routes known Camoufox properties from top-level launch input into config", async () => {
+    const bundleDir = await createBundleDir();
+    mocks.camoufoxPath.mockResolvedValue(bundleDir);
+    mocks.launchPath.mockResolvedValue("/tmp/camoufox-bin");
+
+    const options = await launchOptions({
+      os: "linux",
+      blockWebgl: true,
+      excludeAddons: [DefaultAddons.UBO],
+      iKnowWhatImDoing: true,
+      certificatePaths: ["/tmp/root-ca.pem"],
+      disableTheming: true,
+    });
+
+    const config = readConfigFromEnv(options.env);
+    expect(config.certificatePaths).toEqual(["/tmp/root-ca.pem"]);
+    expect(config.disableTheming).toBe(true);
+    expect(options.certificatePaths).toBeUndefined();
+    expect(options.disableTheming).toBeUndefined();
+  });
+
   it("skips deprecated properties removed upstream", async () => {
     const bundleDir = await createBundleDir();
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);

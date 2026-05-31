@@ -199,6 +199,27 @@ export async function updateFonts(config: Record<string, any>, targetOs: "mac" |
   config.fonts = Array.from(new Set([...(config.fonts ?? []), ...nextFonts]));
 }
 
+function splitConfigProperties(
+  options: Record<string, any>,
+  propertyTypes: Record<string, string>,
+): {
+  configProperties: Record<string, any>;
+  launchOptions: Record<string, any>;
+} {
+  const configProperties: Record<string, any> = {};
+  const launchOptions: Record<string, any> = {};
+
+  for (const [key, value] of Object.entries(options)) {
+    if (key in propertyTypes) {
+      configProperties[key] = value;
+      continue;
+    }
+    launchOptions[key] = value;
+  }
+
+  return { configProperties, launchOptions };
+}
+
 export function checkCustomFingerprint(fingerprint: Fingerprint): void {
   const browserName = new UAParser(fingerprint.navigator.userAgent).getBrowser().name ?? "Non-Firefox";
   if (browserName !== "Firefox") {
@@ -352,10 +373,16 @@ export async function launchOptions(input: {
     iKnowWhatImDoing = false,
     debug,
     virtualDisplay,
-    ...extraLaunchOptions
+    ...rawExtraLaunchOptions
   } = normalizedInput;
 
   const config = passedConfig ?? {};
+  const propertyTypes = await loadProperties(executablePath);
+  const { configProperties, launchOptions: extraLaunchOptions } = splitConfigProperties(
+    rawExtraLaunchOptions,
+    propertyTypes,
+  );
+  Object.assign(config, configProperties);
   const environment = { ...env } as Record<string, string>;
   const requestedBrowserPath = browser ? resolveInstalledBrowserPath(browser) : undefined;
 
