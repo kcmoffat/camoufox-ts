@@ -533,9 +533,9 @@ export function createCliProgram(): Command {
 
   program
     .command("fetch")
-    .summary("Install the active version, or a specific version")
+    .summary("Install the active version, a channel target, or a specific version")
     .description(
-      "Install the active version, or a specific version.\n\nExamples:\n  camoufox fetch\n  camoufox fetch official/135.0-beta.25\n  camoufox fetch official/stable/135.0-beta.25",
+      "Install the active version, a channel target, or a specific version.\n\nExamples:\n  camoufox fetch\n  camoufox fetch official/stable\n  camoufox fetch official/135.0-beta.25\n  camoufox fetch official/stable/135.0-beta.25",
     )
     .argument("[version]")
     .action(async (version?: string) => {
@@ -550,7 +550,7 @@ export function createCliProgram(): Command {
 
       const { repoName, verString, missingChannel } = resolveFetchTarget(cache, config, version);
       if (version && !repoName && !verString) {
-        rprint("Format: <repo>/<version> or <repo>/<channel>/<version>", "red");
+        rprint("Format: <repo>/<channel>, <repo>/<version>, or <repo>/<channel>/<version>", "red");
         return;
       }
       if (missingChannel) {
@@ -724,9 +724,9 @@ export function createCliProgram(): Command {
 
   program
     .command("remove")
-    .summary("Remove downloaded data, or select a specific browser version")
+    .summary("Remove downloaded data, or select a browser channel or version")
     .description(
-      "Remove downloaded data, or select a specific browser version.\n\nExamples:\n  camoufox remove\n  camoufox remove --select\n  camoufox remove official/stable/134.0.2-beta.20",
+      "Remove downloaded data, or select a browser channel or version.\n\nExamples:\n  camoufox remove\n  camoufox remove --select\n  camoufox remove official/stable\n  camoufox remove official/stable/134.0.2-beta.20",
     )
     .argument("[versionPath]")
     .option("--select", "Interactively select a version to remove")
