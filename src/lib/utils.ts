@@ -224,7 +224,7 @@ export function checkCustomFingerprint(fingerprint: Fingerprint): void {
   const browserName = new UAParser(fingerprint.navigator.userAgent).getBrowser().name ?? "Non-Firefox";
   if (browserName !== "Firefox") {
     throw new NonFirefoxFingerprint(
-      `"${browserName}" fingerprints are not supported in Camoufox. Using fingerprints from a browser other than Firefox WILL lead to detection. If this is intentional, pass \`i_know_what_im_doing=true\`.`,
+      `"${browserName}" fingerprints are not supported in Camoufox. Using fingerprints from a browser other than Firefox WILL lead to detection. If this is intentional, pass \`i_know_what_im_doing=True\`.`,
     );
   }
   LeakWarning.warn("custom_fingerprint", false);
