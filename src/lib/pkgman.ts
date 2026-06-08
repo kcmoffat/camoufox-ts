@@ -134,12 +134,37 @@ function findVersionConstraints(
   libraryVersion: string,
 ): Record<string, any> | undefined {
   const parts = parseSemver(libraryVersion);
-  return versions.find((entry) => {
+  let newest: Record<string, any> | undefined;
+  let newestMin: number[] | undefined;
+
+  for (const entry of versions) {
     const pyLibrary = (entry.python_library ?? {}) as Record<string, string>;
     const min = parseSemver(pyLibrary.min ?? "0");
     const max = parseSemver(pyLibrary.max ?? "999");
-    return compareArrays(min, parts) <= 0 && compareArrays(parts, max) < 0;
-  })?.browser;
+    if (compareArrays(min, parts) <= 0 && compareArrays(parts, max) < 0) {
+      return entry.browser;
+    }
+    if (!newestMin || compareArrays(min, newestMin) > 0) {
+      newestMin = min;
+      newest = entry.browser;
+    }
+  }
+
+  return newest;
+}
+
+function getChannelBounds(
+  browserConstraint: Record<string, any> | undefined,
+  channel: "stable" | "prerelease",
+): [string | undefined, string | undefined] {
+  if (!browserConstraint) {
+    return [undefined, undefined];
+  }
+  if ("stable" in browserConstraint || "prerelease" in browserConstraint) {
+    const section = (browserConstraint[channel] ?? {}) as Record<string, string>;
+    return [section.min, section.max];
+  }
+  return [browserConstraint.min, browserConstraint.max];
 }
 
 export class RepoConfig {
@@ -148,8 +173,10 @@ export class RepoConfig {
   pattern: string;
   osMap: Record<string, SupportedOs>;
   archMap: Record<string, string>;
-  buildMin?: string;
-  buildMax?: string;
+  stableMin?: string;
+  stableMax?: string;
+  prereleaseMin?: string;
+  prereleaseMax?: string;
 
   constructor(input: {
     repos: string[];
@@ -157,16 +184,20 @@ export class RepoConfig {
     pattern: string;
     osMap: Record<string, SupportedOs>;
     archMap: Record<string, string>;
-    buildMin?: string;
-    buildMax?: string;
+    stableMin?: string;
+    stableMax?: string;
+    prereleaseMin?: string;
+    prereleaseMax?: string;
   }) {
     this.repos = input.repos;
     this.name = input.name;
     this.pattern = input.pattern;
     this.osMap = input.osMap;
     this.archMap = input.archMap;
-    this.buildMin = input.buildMin;
-    this.buildMax = input.buildMax;
+    this.stableMin = input.stableMin;
+    this.stableMax = input.stableMax;
+    this.prereleaseMin = input.prereleaseMin;
+    this.prereleaseMax = input.prereleaseMax;
   }
 
   get repo(): string {
@@ -192,16 +223,15 @@ export class RepoConfig {
       throw new Error(`Repo '${input.name ?? "unknown"}' missing required pattern`);
     }
 
-    let buildMin: string | undefined;
-    let buildMax: string | undefined;
+    let browserConstraint: Record<string, any> | undefined;
     if (input.versions) {
-      const browserConstraint = findVersionConstraints(
+      browserConstraint = findVersionConstraints(
         input.versions,
         spoofLibraryVersion ?? getLibraryVersion(),
       );
-      buildMin = browserConstraint?.min;
-      buildMax = browserConstraint?.max;
     }
+    const [stableMin, stableMax] = getChannelBounds(browserConstraint, "stable");
+    const [prereleaseMin, prereleaseMax] = getChannelBounds(browserConstraint, "prerelease");
 
     const repos = Array.isArray(input.repo)
       ? input.repo
@@ -216,8 +246,10 @@ export class RepoConfig {
       pattern: input.pattern,
       osMap: { darwin: "mac", linux: "lin", win32: "win", cygwin: "win" },
       archMap: ARCH_MAP,
-      buildMin,
-      buildMax,
+      stableMin,
+      stableMax,
+      prereleaseMin,
+      prereleaseMax,
     });
   }
 
@@ -261,12 +293,14 @@ export class RepoConfig {
     return new RegExp(`^${regex}$`);
   }
 
-  isVersionSupported(version: Version): boolean {
-    if (!this.buildMin || !this.buildMax) {
+  isVersionSupported(version: Version, isPrerelease = false): boolean {
+    const buildMin = isPrerelease ? this.prereleaseMin : this.stableMin;
+    const buildMax = isPrerelease ? this.prereleaseMax : this.stableMax;
+    if (!buildMin || !buildMax) {
       return true;
     }
-    const min = new Version(this.buildMin);
-    const max = new Version(this.buildMax);
+    const min = new Version(buildMin);
+    const max = new Version(buildMax);
     return min.compare(version) <= 0 && version.compare(max) < 0;
   }
 }
@@ -309,6 +343,10 @@ export class Version {
 
   get fullString(): string {
     return `${this.version}-${this.build}`;
+  }
+
+  get isAlpha(): boolean {
+    return this.build.split(".")[0]?.toLowerCase() === "alpha";
   }
 
   compare(other: Version): number {
@@ -450,14 +488,15 @@ export class CamoufoxFetcher extends GitHubDownloader {
 
   override checkAsset(
     asset: Record<string, any>,
-    _release?: Record<string, any>,
+    release?: Record<string, any>,
   ): [Version, string] | undefined {
     const match = this.pattern.exec(asset.name);
     if (!match?.groups) {
       return undefined;
     }
     const version = new Version(match.groups.build, match.groups.version);
-    if (!this.repoConfig.isVersionSupported(version)) {
+    const isPrerelease = Boolean(release?.prerelease) || version.isAlpha;
+    if (!this.repoConfig.isVersionSupported(version, isPrerelease)) {
       return undefined;
     }
     return [version, asset.browser_download_url];
@@ -563,16 +602,17 @@ export async function listAvailableVersions(
 
   for (const release of releases) {
     const isPrerelease = Boolean(release.prerelease);
-    if (isPrerelease && !includePrerelease) {
-      continue;
-    }
     for (const asset of release.assets ?? []) {
       const match = pattern.exec(asset.name);
       if (!match?.groups) {
         continue;
       }
       const version = new Version(match.groups.build, match.groups.version);
-      if (!config.isVersionSupported(version) || seenBuilds.has(version.build)) {
+      const assetIsPrerelease = isPrerelease || version.isAlpha;
+      if (assetIsPrerelease && !includePrerelease) {
+        continue;
+      }
+      if (seenBuilds.has(version.build) || !config.isVersionSupported(version, assetIsPrerelease)) {
         continue;
       }
       seenBuilds.add(version.build);
@@ -580,7 +620,7 @@ export async function listAvailableVersions(
         new AvailableVersion({
           version,
           url: asset.browser_download_url,
-          isPrerelease,
+          isPrerelease: assetIsPrerelease,
           assetId: asset.id,
           assetSize: asset.size,
           assetUpdatedAt: asset.updated_at,

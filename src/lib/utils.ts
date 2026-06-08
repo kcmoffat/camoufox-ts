@@ -61,8 +61,12 @@ export async function getEnvVars(
 
   if (OS_NAME === "lin") {
     const osDir = { lin: "linux", mac: "macos", win: "windows" }[userAgentOs];
-    const fontConfigPath = await getPath(path.join("fontconfigs", osDir));
-    const bundledFontConfig = path.join(fontConfigPath, "fonts.conf");
+    let fontConfigPath = await getPath(path.join("fontconfig", osDir));
+    let bundledFontConfig = path.join(fontConfigPath, "fonts.conf");
+    if (!fs.existsSync(bundledFontConfig)) {
+      fontConfigPath = await getPath(path.join("fontconfigs", osDir));
+      bundledFontConfig = path.join(fontConfigPath, "fonts.conf");
+    }
     if (!fs.existsSync(bundledFontConfig)) {
       throw new Error(
         `fonts.conf not found in ${fontConfigPath}! Something is wrong with your Camoufox bundle.`,
