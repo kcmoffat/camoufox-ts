@@ -11,6 +11,65 @@ import { VirtualDisplay } from "./virtdisplay";
 
 export type CamoufoxBrowser = Browser | BrowserContext;
 
+type NewPageState = {
+  tail: Promise<unknown>;
+};
+
+const NEW_PAGE_STATE = Symbol("camoufoxNewPageState");
+const NEW_PAGE_PATCHED = Symbol("camoufoxNewPagePatched");
+
+function serializeNewPageCall<T>(state: NewPageState, task: () => Promise<T>): Promise<T> {
+  const run = state.tail.catch(() => undefined).then(task);
+  state.tail = run.catch(() => undefined);
+  return run;
+}
+
+function wrapContextNewPage<T extends BrowserContext>(context: T, state: NewPageState): T {
+  const target = context as T & {
+    [NEW_PAGE_PATCHED]?: true;
+    newPage?: BrowserContext["newPage"];
+  };
+  if (target[NEW_PAGE_PATCHED] || typeof context.newPage !== "function") {
+    return context;
+  }
+
+  const originalNewPage = context.newPage.bind(context);
+  target.newPage = ((...args: Parameters<BrowserContext["newPage"]>) =>
+    serializeNewPageCall(state, () => originalNewPage(...args))) as BrowserContext["newPage"];
+  target[NEW_PAGE_PATCHED] = true;
+  return context;
+}
+
+function wrapBrowserNewPage<T extends Browser>(browser: T): T {
+  const target = browser as T & {
+    [NEW_PAGE_STATE]?: NewPageState;
+    [NEW_PAGE_PATCHED]?: true;
+    newContext?: Browser["newContext"];
+    newPage?: Browser["newPage"];
+  };
+  if (target[NEW_PAGE_PATCHED]) {
+    return browser;
+  }
+
+  const state = target[NEW_PAGE_STATE] ?? { tail: Promise.resolve() };
+  target[NEW_PAGE_STATE] = state;
+
+  if (typeof browser.newContext === "function") {
+    const originalNewContext = browser.newContext.bind(browser);
+    target.newContext = (async (...args: Parameters<Browser["newContext"]>) =>
+      wrapContextNewPage(await originalNewContext(...args), state)) as Browser["newContext"];
+  }
+
+  if (typeof browser.newPage === "function") {
+    const originalNewPage = browser.newPage.bind(browser);
+    target.newPage = ((...args: Parameters<NonNullable<Browser["newPage"]>>) =>
+      serializeNewPageCall(state, () => originalNewPage(...args))) as Browser["newPage"];
+  }
+
+  target[NEW_PAGE_PATCHED] = true;
+  return browser;
+}
+
 export class AsyncCamoufox {
   private readonly options: Record<string, any>;
   browser?: CamoufoxBrowser;
@@ -60,11 +119,14 @@ export async function AsyncNewBrowser(input: Record<string, any> = {}): Promise<
       userDataDir ?? path.join(os.tmpdir(), "camoufox-persistent-context"),
       resolvedOptions,
     );
-    return attachVirtualDisplay(context, virtualDisplay);
+    return attachVirtualDisplay(
+      wrapContextNewPage(context, { tail: Promise.resolve() }),
+      virtualDisplay,
+    );
   }
 
   const browser = await firefox.launch(resolvedOptions as LaunchOptions);
-  return attachVirtualDisplay(browser, virtualDisplay);
+  return attachVirtualDisplay(wrapBrowserNewPage(browser), virtualDisplay);
 }
 
 function proxyUrlWithCreds(proxy: Record<string, string>): string {

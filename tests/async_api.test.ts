@@ -42,6 +42,16 @@ vi.mock("../src/lib/fingerprints", () => ({
 
 import { AsyncNewBrowser, AsyncNewContext } from "../src/lib/async_api";
 
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 afterEach(() => {
   launchOptionsMock.mockReset();
   virtualDisplayGetMock.mockReset();
@@ -87,6 +97,40 @@ describe("AsyncNewBrowser", () => {
       { headless: true },
     );
     expect(result).toBe(context);
+  });
+
+  it("serializes concurrent newPage calls across wrapped contexts", async () => {
+    const firstPage = deferred<string>();
+    const newPageSpy = vi
+      .fn()
+      .mockImplementationOnce(async () => firstPage.promise)
+      .mockResolvedValueOnce("page-2");
+    const context = {
+      close: vi.fn().mockResolvedValue(undefined),
+      newPage: newPageSpy,
+    };
+    const browser = {
+      close: vi.fn().mockResolvedValue(undefined),
+      newContext: vi.fn().mockResolvedValue(context),
+    };
+    launchOptionsMock.mockResolvedValue({ headless: true });
+    launchMock.mockResolvedValue(browser);
+
+    const wrappedBrowser = (await AsyncNewBrowser({ headless: true })) as any;
+    const wrappedContext = await wrappedBrowser.newContext();
+    const pendingFirst = wrappedContext.newPage();
+    const pendingSecond = wrappedContext.newPage();
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(newPageSpy).toHaveBeenCalledTimes(1);
+
+    firstPage.resolve("page-1");
+
+    await expect(pendingFirst).resolves.toBe("page-1");
+    await expect(pendingSecond).resolves.toBe("page-2");
+    expect(newPageSpy).toHaveBeenCalledTimes(2);
   });
 });
 
