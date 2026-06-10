@@ -1,4 +1,5 @@
 import { PassThrough } from "node:stream";
+import { EventEmitter } from "node:events";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -32,18 +33,21 @@ import { VirtualDisplay } from "../src/lib/virtdisplay";
 
 function createChild() {
   const pipe = new PassThrough();
-  const child = {
+  const child = Object.assign(new EventEmitter(), {
     stdio: [null, null, null, pipe],
     exitCode: null,
     killed: false,
     unref: vi.fn(),
-    kill: vi.fn(() => {
+    kill: vi.fn((signal?: NodeJS.Signals | number) => {
       child.killed = true;
-      child.exitCode ??= 0;
-      pipe.end();
+      if (signal === "SIGKILL") {
+        child.exitCode ??= 0;
+        pipe.end();
+        child.emit("exit", child.exitCode, signal);
+      }
       return true;
     }),
-  } as any;
+  }) as any;
   return { child, pipe };
 }
 
@@ -140,7 +144,10 @@ describe("VirtualDisplay", () => {
 
     await expect(firstGet).resolves.toBe(":117");
 
-    firstDisplay.kill();
+    const killPromise = firstDisplay.kill();
+    firstChild.child.exitCode = 0;
+    firstChild.child.emit("exit", 0, "SIGTERM");
+    await killPromise;
     expect(firstChild.child.kill).toHaveBeenCalledOnce();
 
     const secondGet = new VirtualDisplay().get();
@@ -148,5 +155,55 @@ describe("VirtualDisplay", () => {
 
     await expect(secondGet).resolves.toBe(":118");
     expect(spawnMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits for Xvfb to exit after terminate", async () => {
+    const { child, pipe } = createChild();
+
+    whichSyncMock.mockReturnValue(process.execPath);
+    spawnMock.mockReturnValue(child);
+
+    const display = new VirtualDisplay();
+    const firstGet = display.get();
+    pipe.end("117\n");
+
+    await expect(firstGet).resolves.toBe(":117");
+
+    const killPromise = display.kill();
+    expect(child.kill).toHaveBeenCalledOnce();
+
+    let settled = false;
+    void killPromise.then(() => {
+      settled = true;
+    });
+
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    child.exitCode = 0;
+    child.emit("exit", 0, "SIGTERM");
+
+    await expect(killPromise).resolves.toBeUndefined();
+  });
+
+  it("force kills Xvfb if it does not exit after terminate", async () => {
+    const { child, pipe } = createChild();
+
+    vi.useFakeTimers();
+    whichSyncMock.mockReturnValue(process.execPath);
+    spawnMock.mockReturnValue(child);
+
+    const display = new VirtualDisplay(true);
+    const firstGet = display.get();
+    pipe.end("117\n");
+
+    await expect(firstGet).resolves.toBe(":117");
+
+    const killPromise = display.kill();
+    expect(child.kill).toHaveBeenNthCalledWith(1);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expect(killPromise).resolves.toBeUndefined();
+    expect(child.kill).toHaveBeenNthCalledWith(2, "SIGKILL");
   });
 });

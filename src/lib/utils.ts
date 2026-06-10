@@ -301,7 +301,7 @@ export async function attachVirtualDisplay<T extends { close: (...args: any[]) =
     try {
       return await close(...args);
     } finally {
-      virtualDisplay.kill();
+      await virtualDisplay.kill();
     }
   };
   (browser as any)._virtual_display = virtualDisplay;

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
+import { once } from "node:events";
 
 import which from "which";
 
@@ -15,8 +16,10 @@ export class VirtualDisplay {
   proc?: ChildProcess;
   private displayNumber?: number;
   private displayPromise?: Promise<number>;
+  private killPromise?: Promise<void>;
   private static readonly displayFd = 3;
   private static readonly displayReadTimeoutMs = 10_000;
+  private static readonly killTimeoutMs = 5_000;
 
   static readonly xvfbArgs = [
     "-screen",
@@ -106,7 +109,7 @@ export class VirtualDisplay {
 
     const displayPipe = this.proc.stdio[VirtualDisplay.displayFd];
     if (!displayPipe) {
-      this.kill();
+      void this.kill();
       throw new CannotExecuteXvfb("Xvfb did not expose a display pipe");
     }
 
@@ -120,7 +123,7 @@ export class VirtualDisplay {
         }
         settled = true;
         clearTimeout(timeout);
-        this.kill();
+        void this.kill();
         reject(new CannotExecuteXvfb(message));
       };
 
@@ -170,12 +173,62 @@ export class VirtualDisplay {
     });
   }
 
-  kill(): void {
-    if (this.proc && this.proc.exitCode == null && !this.proc.killed) {
-      if (this.debug) {
-        console.log("Terminating virtual display:", this.displayNumber);
+  async kill(): Promise<void> {
+    if (this.killPromise) {
+      await this.killPromise;
+      return;
+    }
+
+    const proc = this.proc;
+    if (!proc || proc.exitCode != null) {
+      return;
+    }
+
+    this.killPromise = (async () => {
+      if (!proc.killed) {
+        if (this.debug) {
+          console.log("Terminating virtual display:", this.displayNumber);
+        }
+        proc.kill();
       }
-      this.proc.kill();
+
+      if (proc.exitCode != null) {
+        return;
+      }
+
+      const waitForExit = async (): Promise<void> => {
+        if (proc.exitCode != null) {
+          return;
+        }
+        await once(proc, "exit");
+      };
+
+      const timedOut = Symbol("timedOut");
+      const result = await Promise.race([
+        waitForExit().then(() => undefined),
+        new Promise<symbol>((resolve) => {
+          setTimeout(() => resolve(timedOut), VirtualDisplay.killTimeoutMs);
+        }),
+      ]);
+
+      if (result !== timedOut || proc.exitCode != null) {
+        return;
+      }
+
+      if (this.debug) {
+        console.log("Xvfb did not exit in time, killing forcefully");
+      }
+      proc.kill("SIGKILL");
+
+      if (proc.exitCode == null) {
+        await once(proc, "exit");
+      }
+    })();
+
+    try {
+      await this.killPromise;
+    } finally {
+      this.killPromise = undefined;
     }
   }
 
