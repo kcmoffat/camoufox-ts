@@ -367,6 +367,8 @@ export class AvailableVersion {
   assetId?: number;
   assetSize?: number;
   assetUpdatedAt?: string;
+  sha256?: string;
+  assetCreatedAt?: string;
 
   constructor(input: {
     version: Version;
@@ -375,6 +377,8 @@ export class AvailableVersion {
     assetId?: number;
     assetSize?: number;
     assetUpdatedAt?: string;
+    sha256?: string;
+    assetCreatedAt?: string;
   }) {
     this.version = input.version;
     this.url = input.url;
@@ -382,6 +386,12 @@ export class AvailableVersion {
     this.assetId = input.assetId;
     this.assetSize = input.assetSize;
     this.assetUpdatedAt = input.assetUpdatedAt;
+    this.sha256 = input.sha256;
+    this.assetCreatedAt = input.assetCreatedAt;
+  }
+
+  get sha8(): string {
+    return this.sha256?.slice(0, 8) ?? "";
   }
 
   get display(): string {
@@ -396,6 +406,8 @@ export class AvailableVersion {
       asset_id: this.assetId,
       asset_size: this.assetSize,
       asset_updated_at: this.assetUpdatedAt,
+      sha256: this.sha256,
+      created_at: this.assetCreatedAt,
     };
   }
 }
@@ -461,6 +473,8 @@ export class CamoufoxFetcher extends GitHubDownloader {
   repoConfig: RepoConfig;
   arch: string;
   pattern: RegExp;
+  installedSha256?: string;
+  installedCreatedAt?: string;
   protected selectedVersion?: AvailableVersion;
   protected versionObj?: Version;
   protected downloadUrl?: string;
@@ -476,6 +490,8 @@ export class CamoufoxFetcher extends GitHubDownloader {
       this.versionObj = selectedVersion.version;
       this.downloadUrl = selectedVersion.url;
       this.isPrerelease = selectedVersion.isPrerelease;
+      this.installedSha256 = selectedVersion.sha256;
+      this.installedCreatedAt = selectedVersion.assetCreatedAt;
     }
   }
 
@@ -499,6 +515,9 @@ export class CamoufoxFetcher extends GitHubDownloader {
     if (!this.repoConfig.isVersionSupported(version, isPrerelease)) {
       return undefined;
     }
+    const digest = typeof asset.digest === "string" ? asset.digest : "";
+    this.installedSha256 = digest.startsWith("sha256:") ? digest.slice(7) : undefined;
+    this.installedCreatedAt = asset.created_at;
     return [version, asset.browser_download_url];
   }
 
@@ -598,7 +617,6 @@ export async function listAvailableVersions(
   }
 
   const versions: AvailableVersion[] = [];
-  const seenBuilds = new Set<string>();
 
   for (const release of releases) {
     const isPrerelease = Boolean(release.prerelease);
@@ -612,10 +630,10 @@ export async function listAvailableVersions(
       if (assetIsPrerelease && !includePrerelease) {
         continue;
       }
-      if (seenBuilds.has(version.build) || !config.isVersionSupported(version, assetIsPrerelease)) {
+      if (!config.isVersionSupported(version, assetIsPrerelease)) {
         continue;
       }
-      seenBuilds.add(version.build);
+      const digest = typeof asset.digest === "string" ? asset.digest : "";
       versions.push(
         new AvailableVersion({
           version,
@@ -624,12 +642,20 @@ export async function listAvailableVersions(
           assetId: asset.id,
           assetSize: asset.size,
           assetUpdatedAt: asset.updated_at,
+          sha256: digest.startsWith("sha256:") ? digest.slice(7) : undefined,
+          assetCreatedAt: asset.created_at,
         }),
       );
     }
   }
 
-  return versions.sort((left, right) => right.version.compare(left.version));
+  return versions.sort((left, right) => {
+    const versionOrder = right.version.compare(left.version);
+    if (versionOrder !== 0) {
+      return versionOrder;
+    }
+    return (right.assetCreatedAt ?? "").localeCompare(left.assetCreatedAt ?? "");
+  });
 }
 
 export function installedVerstr(): string {
@@ -778,6 +804,21 @@ export async function unzip(
 
 export function loadYaml(file: string): Record<string, any> {
   return parseYaml(fs.readFileSync(assetPath(file), "utf8")) as Record<string, any>;
+}
+
+export function formatAssetDate(iso?: string): string {
+  if (!iso) {
+    return "";
+  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.valueOf())) {
+    return "";
+  }
+  const month = date.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+  const day = date.getUTCDate();
+  const year = date.getUTCFullYear();
+  const currentYear = new Date().getUTCFullYear();
+  return year === currentYear ? `${month} ${day}` : `${month} ${day}, ${year}`;
 }
 
 function escapeRegExp(value: string): string {

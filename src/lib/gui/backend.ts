@@ -58,7 +58,7 @@ export class GuiBackend {
   }
 
   async fetch(body: JsonObject): Promise<JsonObject> {
-    const { repoConfig, selected } = this.resolveFetchTarget(body.version);
+    const { repoConfig, selected } = this.resolveFetchTarget(body.version, body.sha256);
     if (!repoConfig || !selected) {
       throw new Error(`Version '${body.version ?? "active"}' not found in cache.`);
     }
@@ -76,12 +76,12 @@ export class GuiBackend {
   }
 
   async pinVersion(body: JsonObject): Promise<JsonObject> {
-    const target = findInstalled(`${body.repoName}/${body.channelType}/${body.version}`);
+    const target = body.relativePath ? findInstalled(body.relativePath) : findInstalled(`${body.repoName}/${body.channelType}/${body.version}`);
     const [version] = String(body.version).split("-", 2);
     setPinned(
       body.repoName,
       body.channelType,
-      { version, build: body.version.slice(version.length + 1) },
+      { version, build: body.version.slice(version.length + 1), sha256: body.sha256 },
       target,
     );
     return this.state();
@@ -229,19 +229,25 @@ export class GuiBackend {
     };
   }
 
-  private resolveFetchTarget(specifier?: string): {
+  private resolveFetchTarget(specifier?: string, sha256?: string): {
     repoConfig?: RepoConfig;
     selected?: AvailableVersion;
   } {
     const cache = loadRepoCache();
     const config = loadConfig();
-    const { repoName, verString: fullVersion } = resolveFetchTarget(cache, config, specifier);
+    const { repoName, verString: fullVersion, sha256: resolvedSha } = resolveFetchTarget(
+      cache,
+      config,
+      specifier,
+    );
 
     const repo = (cache.repos ?? []).find(
       (entry: Record<string, any>) => entry.name.toLowerCase() === repoName?.toLowerCase(),
     );
     const candidate = (repo?.versions ?? []).find(
-      (entry: Record<string, any>) => `${entry.version}-${entry.build}` === fullVersion,
+      (entry: Record<string, any>) =>
+        `${entry.version}-${entry.build}` === fullVersion &&
+        (!(sha256 ?? resolvedSha) || entry.sha256 === (sha256 ?? resolvedSha)),
     );
     if (!repo || !candidate) {
       return {};
@@ -255,6 +261,8 @@ export class GuiBackend {
         assetId: candidate.asset_id,
         assetSize: candidate.asset_size,
         assetUpdatedAt: candidate.asset_updated_at,
+        sha256: candidate.sha256,
+        assetCreatedAt: candidate.created_at,
       }),
     };
   }
@@ -271,9 +279,12 @@ function serializeInstalledVersion(version: InstalledVersion): JsonObject {
     version: version.version.fullString,
     build: version.version.build,
     path: version.path,
+    relativePath: version.relativePath,
     channelPath: version.channelPath,
     isActive: version.isActive,
     isPrerelease: version.isPrerelease,
+    sha256: version.sha256,
+    createdAt: version.createdAt,
   };
 }
 

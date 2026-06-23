@@ -125,6 +125,26 @@
         return data;
       }
 
+      function versionKey(version, sha256) {
+        return `${version}|${sha256 || ""}`;
+      }
+
+      function formatAssetDate(iso) {
+        if (!iso) {
+          return "";
+        }
+        const date = new Date(iso);
+        if (Number.isNaN(date.valueOf())) {
+          return "";
+        }
+        const currentYear = new Date().getUTCFullYear();
+        const options = { month: "short", day: "numeric", timeZone: "UTC" };
+        if (date.getUTCFullYear() !== currentYear) {
+          options.year = "numeric";
+        }
+        return date.toLocaleDateString("en-US", options);
+      }
+
       function render(state) {
         status.textContent = "Ready";
         active.innerHTML = `
@@ -136,7 +156,9 @@
           </div>
         `;
 
-        const installed = new Map(state.installed.map((entry) => [entry.build, entry]));
+        const installed = new Map(
+          state.installed.map((entry) => [versionKey(entry.version, entry.sha256), entry]),
+        );
         repos.innerHTML = "";
         for (const repo of state.repos) {
           const repoBlock = document.createElement("div");
@@ -156,31 +178,44 @@
 
           for (const version of repo.versions || []) {
             const fullVersion = `${version.version}-${version.build}`;
-            const installedVersion = installed.get(version.build);
+            const installedVersion = installed.get(versionKey(fullVersion, version.sha256));
+            const assetDate = formatAssetDate(version.created_at);
             const row = document.createElement("div");
             row.className = "version-row";
             row.innerHTML = `
               <div>
                 <div><strong>v${fullVersion}</strong> ${version.is_prerelease ? "(prerelease)" : "(stable)"}</div>
-                <div class="meta">${installedVersion ? installedVersion.channelPath : "Not installed"}</div>
+                <div class="meta">${installedVersion ? installedVersion.channelPath : "Not installed"}${assetDate ? ` · ${assetDate}` : ""}</div>
               </div>
               <div class="actions">
-                <button data-fetch="${repo.name}/${version.is_prerelease ? "prerelease" : "stable"}/${fullVersion}">Fetch</button>
-                <button data-pin="${repo.name}/${version.is_prerelease ? "prerelease" : "stable"}/${fullVersion}" class="secondary">Pin</button>
-                ${installedVersion ? `<button data-remove="${installedVersion.channelPath}" class="warn">Remove</button>` : ""}
+                <button data-fetch>Fetch</button>
+                <button data-pin class="secondary">Pin</button>
+                ${installedVersion ? `<button data-remove class="warn">Remove</button>` : ""}
               </div>
             `;
             row.querySelector("[data-fetch]").addEventListener("click", async () => {
-              await mutate(() => api("/api/fetch", { version: row.querySelector("[data-fetch]").dataset.fetch }));
+              await mutate(() =>
+                api("/api/fetch", {
+                  version: `${repo.name}/${version.is_prerelease ? "prerelease" : "stable"}/${fullVersion}`,
+                  sha256: version.sha256 || null,
+                }),
+              );
             });
             row.querySelector("[data-pin]").addEventListener("click", async () => {
-              const [repoName, channelType, versionValue] = row.querySelector("[data-pin]").dataset.pin.split("/");
-              await mutate(() => api("/api/pin-version", { repoName, channelType, version: versionValue }));
+              await mutate(() =>
+                api("/api/pin-version", {
+                  repoName: repo.name,
+                  channelType: version.is_prerelease ? "prerelease" : "stable",
+                  version: fullVersion,
+                  sha256: version.sha256 || null,
+                  relativePath: installedVersion?.relativePath || null,
+                }),
+              );
             });
             const removeButton = row.querySelector("[data-remove]");
             if (removeButton) {
               removeButton.addEventListener("click", async () => {
-                await mutate(() => api("/api/remove", { versionPath: removeButton.dataset.remove }));
+                await mutate(() => api("/api/remove", { versionPath: installedVersion.relativePath }));
               });
             }
             repoBlock.appendChild(row);

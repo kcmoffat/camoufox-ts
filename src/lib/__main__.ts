@@ -20,6 +20,7 @@ import {
   COMPAT_FLAG,
   CONFIG_FILE,
   REPO_CACHE_FILE,
+  findInstalledForVersion,
   InstalledVersion,
   getDefaultChannel,
   listInstalled,
@@ -34,6 +35,7 @@ import {
 import {
   AvailableVersion,
   CamoufoxFetcher,
+  formatAssetDate,
   INSTALL_DIR,
   RepoConfig,
   Version,
@@ -91,6 +93,49 @@ export function findInstalled(specifier: string): InstalledVersion | undefined {
   return undefined;
 }
 
+function fullVersionOf(version: Record<string, any>): string {
+  return `${version.version}-${version.build}`;
+}
+
+function sameVersionCount(versions: Array<Record<string, any>>, fullVersion: string): number {
+  return versions.filter((version) => fullVersionOf(version) === fullVersion).length;
+}
+
+function findRepoVersions(cache: Record<string, any>, repoName?: string): Record<string, any> | undefined {
+  return (cache.repos ?? []).find(
+    (repo: Record<string, any>) => repo.name.toLowerCase() === repoName?.toLowerCase(),
+  );
+}
+
+function findCachedVersion(
+  versions: Array<Record<string, any>>,
+  fullVersion: string,
+  sha256?: string,
+): Record<string, any> | undefined {
+  return versions.find(
+    (version) =>
+      fullVersionOf(version) === fullVersion && (!sha256 || version.sha256 === sha256),
+  );
+}
+
+function toAvailableVersion(candidate: Record<string, any>): AvailableVersion {
+  return new AvailableVersion({
+    version: new Version(candidate.build, candidate.version),
+    url: candidate.url,
+    isPrerelease: Boolean(candidate.is_prerelease),
+    assetId: candidate.asset_id,
+    assetSize: candidate.asset_size,
+    assetUpdatedAt: candidate.asset_updated_at,
+    sha256: candidate.sha256,
+    assetCreatedAt: candidate.created_at,
+  });
+}
+
+function formatVersionLabel(version: Record<string, any>): string {
+  const date = formatAssetDate(version.created_at);
+  return date ? ` (${date})` : "";
+}
+
 function getGeoipSourceName(): string {
   try {
     return loadGeoipConfig().name ?? "Default";
@@ -129,6 +174,8 @@ export async function doSync(
           asset_id: version.assetId,
           asset_size: version.assetSize,
           asset_updated_at: version.assetUpdatedAt,
+          sha256: version.sha256,
+          created_at: version.assetCreatedAt,
         })),
       });
       rprint(` ${versions.length} versions`, "green");
@@ -201,6 +248,7 @@ export function setChannel(repoName: string, channelType: "stable" | "prerelease
   const config = loadConfig();
   config.channel = `${repoName}/${channelType}`;
   delete config.pinned;
+  delete config.pinnedSha;
 
   const cache = loadRepoCache();
   const candidates = (cache.repos ?? [])
@@ -208,9 +256,13 @@ export function setChannel(repoName: string, channelType: "stable" | "prerelease
     ?.versions?.filter((version: Record<string, any>) => Boolean(version.is_prerelease) === (channelType === "prerelease"));
 
   if (candidates?.length) {
-    const latestBuild = candidates[0].build;
-    const installed = listInstalled().find(
-      (version) => version.version.build === latestBuild && version.repoName === repoName.toLowerCase(),
+    const latest = candidates[0];
+    const fullVersion = fullVersionOf(latest);
+    const installed = findInstalledForVersion(
+      fullVersion,
+      latest.sha256,
+      repoName.toLowerCase(),
+      sameVersionCount(candidates, fullVersion),
     );
     if (installed) {
       config.active_version = installed.relativePath;
@@ -237,6 +289,11 @@ export function setPinned(
   const verString = `${versionData.version}-${versionData.build}`;
   config.channel = `${repoName}/${channelType}`;
   config.pinned = verString;
+  if (versionData.sha256) {
+    config.pinnedSha = versionData.sha256;
+  } else {
+    delete config.pinnedSha;
+  }
   if (installed) {
     config.active_version = installed.relativePath;
     saveConfig(config);
@@ -293,22 +350,30 @@ function listAllCommand(): void {
     return;
   }
   const cache = loadRepoCache();
-  const installed = new Map(listInstalled().map((version) => [version.version.build, version]));
+  const installed = listInstalled();
   rprint("Available versions:\n", "yellow");
 
   for (const repoData of cache.repos ?? []) {
     console.log(`${repoData.name}/`);
     for (const [index, version] of (repoData.versions ?? []).entries()) {
-      const installedVersion = installed.get(version.build);
+      const fullVersion = fullVersionOf(version);
+      const installedVersion = findInstalledForVersion(
+        fullVersion,
+        version.sha256,
+        repoData.name.toLowerCase(),
+        sameVersionCount(repoData.versions ?? [], fullVersion),
+        installed,
+      );
       const prefix = index === repoData.versions.length - 1 ? "└──" : "├──";
       const status = [
         version.is_prerelease ? "prerelease" : "stable",
         installedVersion ? "installed" : undefined,
         installedVersion?.isActive ? "active" : undefined,
+        formatAssetDate(version.created_at) || undefined,
       ]
         .filter(Boolean)
         .join(", ");
-      console.log(`    ${prefix} v${version.version}-${version.build} (${status})`);
+      console.log(`    ${prefix} v${fullVersion} (${status})`);
     }
     console.log("");
   }
@@ -456,11 +521,11 @@ export function resolveFetchTarget(
   cache: Record<string, any>,
   config: Record<string, any>,
   version?: string,
-): { repoName?: string; verString?: string; missingChannel?: string } {
+): { repoName?: string; verString?: string; sha256?: string; missingChannel?: string } {
   const resolveChannelVersion = (
     repo: string,
     channelType: "stable" | "prerelease",
-  ): { repoName?: string; verString?: string; missingChannel?: string } => {
+  ): { repoName?: string; verString?: string; sha256?: string; missingChannel?: string } => {
     for (const repoData of cache.repos ?? []) {
       if (repoData.name.toLowerCase() !== repo.toLowerCase()) {
         continue;
@@ -472,7 +537,8 @@ export function resolveFetchTarget(
       if (candidates.length) {
         return {
           repoName: repo,
-          verString: `${candidates[0].version}-${candidates[0].build}`,
+          verString: fullVersionOf(candidates[0]),
+          sha256: candidates[0].sha256,
         };
       }
       return { repoName: repo, missingChannel: `${repo}/${channelType}` };
@@ -506,7 +572,7 @@ export function resolveFetchTarget(
     const channel = config.channel ?? "";
     repoName = channel.includes("/") ? channel.split("/")[0] : channel;
     verString = config.pinned;
-    return { repoName, verString };
+    return { repoName, verString, sha256: config.pinnedSha };
   }
 
   const channel = config.channel ?? getDefaultChannel();
@@ -548,7 +614,7 @@ export function createCliProgram(): Command {
       const cache = loadRepoCache();
       const config = loadConfig();
 
-      const { repoName, verString, missingChannel } = resolveFetchTarget(cache, config, version);
+      const { repoName, verString, sha256, missingChannel } = resolveFetchTarget(cache, config, version);
       if (version && !repoName && !verString) {
         rprint("Format: <repo>/<channel>, <repo>/<version>, or <repo>/<channel>/<version>", "red");
         return;
@@ -563,45 +629,33 @@ export function createCliProgram(): Command {
         return;
       }
 
-      for (const repoData of cache.repos ?? []) {
-        if (repoData.name.toLowerCase() !== repoName.toLowerCase()) {
-          continue;
-        }
-        for (const candidate of repoData.versions ?? []) {
-          if (`${candidate.version}-${candidate.build}` !== verString) {
-            continue;
-          }
-          const selected = new AvailableVersion({
-            version: new Version(candidate.build, candidate.version),
-            url: candidate.url,
-            isPrerelease: Boolean(candidate.is_prerelease),
-            assetId: candidate.asset_id,
-            assetSize: candidate.asset_size,
-            assetUpdatedAt: candidate.asset_updated_at,
-          });
-          const repoConfig = RepoConfig.findByName(repoData.name);
-          if (!repoConfig) {
-            rprint(`Unknown repo '${repoData.name}'.`, "red");
-            return;
-          }
-          try {
-            await new CamoufoxUpdate(repoConfig, selected).initialize().then((update) => update.update());
-          } catch (error) {
-            const message = String(error);
-            if (message.includes("404")) {
-              rprint("Release not found (404). Asset may have been removed.", "red");
-              rprint("Run 'camoufox sync' to refresh available versions.", "yellow");
-            } else {
-              rprint(`Error: ${message}`, "red");
-            }
-            return;
-          }
-          if (ALLOW_GEOIP) {
-            await downloadMmdb().catch(() => undefined);
-          }
-          await maybeDownloadAddons(Object.values(DefaultAddons));
+      const repoData = findRepoVersions(cache, repoName);
+      const candidate = repoData ? findCachedVersion(repoData.versions ?? [], verString, sha256) : undefined;
+      if (repoData && candidate) {
+        const repoConfig = RepoConfig.findByName(repoData.name);
+        if (!repoConfig) {
+          rprint(`Unknown repo '${repoData.name}'.`, "red");
           return;
         }
+        try {
+          await new CamoufoxUpdate(repoConfig, toAvailableVersion(candidate))
+            .initialize()
+            .then((update) => update.update());
+        } catch (error) {
+          const message = String(error);
+          if (message.includes("404")) {
+            rprint("Release not found (404). Asset may have been removed.", "red");
+            rprint("Run 'camoufox sync' to refresh available versions.", "yellow");
+          } else {
+            rprint(`Error: ${message}`, "red");
+          }
+          return;
+        }
+        if (ALLOW_GEOIP) {
+          await downloadMmdb().catch(() => undefined);
+        }
+        await maybeDownloadAddons(Object.values(DefaultAddons));
+        return;
       }
       rprint(`Version '${version ?? verString}' not found in cache.`, "red");
     });
@@ -661,7 +715,7 @@ export function createCliProgram(): Command {
       }
 
       const cache = loadRepoCache();
-      const installed = new Map(listInstalled().map((version) => [version.version.build, version]));
+      const installed = listInstalled();
       const choices = [];
       for (const repoData of cache.repos ?? []) {
         const stable = (repoData.versions ?? []).find((version: Record<string, any>) => !version.is_prerelease);
@@ -679,10 +733,16 @@ export function createCliProgram(): Command {
           });
         }
         for (const version of (repoData.versions ?? []).slice(0, 10)) {
-          const fullString = `${version.version}-${version.build}`;
-          const installedVersion = installed.get(version.build);
+          const fullString = fullVersionOf(version);
+          const installedVersion = findInstalledForVersion(
+            fullString,
+            version.sha256,
+            repoData.name.toLowerCase(),
+            sameVersionCount(repoData.versions ?? [], fullString),
+            installed,
+          );
           choices.push({
-            name: `Pin ${repoData.name.toLowerCase()}/${version.is_prerelease ? "prerelease" : "stable"}/${fullString}${installedVersion ? " (installed)" : ""}`,
+            name: `Pin ${repoData.name.toLowerCase()}/${version.is_prerelease ? "prerelease" : "stable"}/${fullString}${formatVersionLabel(version)}${installedVersion ? " (installed)" : ""}`,
             value: {
               kind: "pin" as const,
               repoName: repoData.name,

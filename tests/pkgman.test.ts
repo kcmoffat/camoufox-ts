@@ -19,6 +19,7 @@ describe("pkgman", () => {
     expect(repos.length).toBeGreaterThan(0);
     expect(repos[0].name).toBe("Official");
     expect(repos[0].repos.length).toBeGreaterThan(0);
+    expect(repos.map((repo) => repo.name)).toContain("JWriter20");
   });
 
   it("keeps the official repo fallback chain from upstream repos.yml", () => {
@@ -131,5 +132,43 @@ describe("pkgman", () => {
         ["beta.24", false],
       ]),
     );
+  });
+
+  it("keeps duplicate version-build assets when they differ by release digest", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => [
+        {
+          prerelease: false,
+          assets: [
+            {
+              id: 1,
+              size: 123,
+              updated_at: "2026-06-23T12:00:00Z",
+              created_at: "2026-06-23T12:00:00Z",
+              digest: "sha256:bbbbbbbb11111111",
+              name: "camoufox-150.0.2-beta.25-lin.x86_64.zip",
+              browser_download_url: "https://example.test/newer.zip",
+            },
+            {
+              id: 2,
+              size: 122,
+              updated_at: "2026-06-22T12:00:00Z",
+              created_at: "2026-06-22T12:00:00Z",
+              digest: "sha256:aaaaaaaa00000000",
+              name: "camoufox-150.0.2-beta.25-lin.x86_64.zip",
+              browser_download_url: "https://example.test/older.zip",
+            },
+          ],
+        },
+      ],
+    } as Response);
+
+    const versions = await listAvailableVersions(RepoConfig.getDefault(), true, "lin", "x86_64");
+
+    expect(versions).toHaveLength(2);
+    expect(versions.map((version) => version.sha8)).toEqual(["bbbbbbbb", "aaaaaaaa"]);
+    expect(versions[0]?.assetCreatedAt).toBe("2026-06-23T12:00:00Z");
+    expect(versions[1]?.assetCreatedAt).toBe("2026-06-22T12:00:00Z");
   });
 });

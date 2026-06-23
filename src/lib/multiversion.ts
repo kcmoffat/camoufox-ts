@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   AvailableVersion,
   CamoufoxFetcher,
+  formatAssetDate,
   INSTALL_DIR,
   RepoConfig,
   Version,
@@ -23,6 +24,7 @@ export type StoredConfig = {
   active_version?: string | null;
   channel?: string;
   pinned?: string;
+  pinnedSha?: string;
   active_repo?: string;
   active_build?: string;
   active_version_value?: string;
@@ -79,6 +81,8 @@ export function getCachedVersions(repoName?: string): AvailableVersion[] {
           assetId: version.asset_id,
           assetSize: version.asset_size,
           assetUpdatedAt: version.asset_updated_at,
+          sha256: version.sha256,
+          assetCreatedAt: version.created_at,
         }),
       );
     }
@@ -108,6 +112,8 @@ export class InstalledVersion {
   assetId?: number;
   assetSize?: number;
   assetUpdatedAt?: string;
+  sha256?: string;
+  createdAt?: string;
 
   constructor(input: {
     repoName: string;
@@ -118,6 +124,8 @@ export class InstalledVersion {
     assetId?: number;
     assetSize?: number;
     assetUpdatedAt?: string;
+    sha256?: string;
+    createdAt?: string;
   }) {
     this.repoName = input.repoName;
     this.version = input.version;
@@ -127,10 +135,12 @@ export class InstalledVersion {
     this.assetId = input.assetId;
     this.assetSize = input.assetSize;
     this.assetUpdatedAt = input.assetUpdatedAt;
+    this.sha256 = input.sha256;
+    this.createdAt = input.createdAt;
   }
 
   get relativePath(): string {
-    return `browsers/${this.repoName}/${this.version.fullString}`;
+    return `browsers/${this.repoName}/${path.basename(this.path)}`;
   }
 
   get channelPath(): string {
@@ -161,6 +171,39 @@ export function findInstalledByBuild(build: string, repoName?: string): Installe
   );
 }
 
+export function versionFolderName(version: string, build: string, sha8 = ""): string {
+  const base = `${version}-${build}`;
+  return sha8 ? `${base}-${sha8}` : base;
+}
+
+export function findInstalledForVersion(
+  fullVersion: string,
+  sha256?: string,
+  repoName?: string,
+  count = 1,
+  installed = listInstalled(),
+): InstalledVersion | undefined {
+  const candidates = installed.filter((version) => {
+    if (repoName && version.repoName !== repoName) {
+      return false;
+    }
+    return version.version.fullString === fullVersion;
+  });
+  const sha8 = sha256?.slice(0, 8) ?? "";
+
+  if (sha8) {
+    return candidates.find(
+      (version) => path.basename(version.path) === `${fullVersion}-${sha8}` || version.sha256 === sha256,
+    );
+  }
+
+  const legacy = candidates.find((version) => path.basename(version.path) === fullVersion);
+  if (!legacy || legacy.sha256) {
+    return undefined;
+  }
+  return count <= 1 ? legacy : undefined;
+}
+
 export function listInstalled(): InstalledVersion[] {
   const installed: InstalledVersion[] = [];
   const config = loadConfig();
@@ -186,7 +229,7 @@ export function listInstalled(): InstalledVersion[] {
       try {
         const version = Version.fromPath(versionDir);
         const versionData = JSON.parse(fs.readFileSync(versionJson, "utf8")) as Record<string, any>;
-        const relativePath = `browsers/${repoEntry.name}/${version.fullString}`;
+        const relativePath = `browsers/${repoEntry.name}/${versionEntry.name}`;
         installed.push(
           new InstalledVersion({
             repoName: repoEntry.name,
@@ -197,6 +240,8 @@ export function listInstalled(): InstalledVersion[] {
             assetId: versionData.asset_id,
             assetSize: versionData.asset_size,
             assetUpdatedAt: versionData.asset_updated_at,
+            sha256: versionData.sha256,
+            createdAt: versionData.created_at,
           }),
         );
       } catch {}
@@ -263,7 +308,11 @@ export function findInstalledVersion(specifier: string): string | undefined {
 
 export async function installVersioned(fetcher: CamoufoxFetcher, replace = false): Promise<boolean> {
   const repoName = getRepoName(fetcher.githubRepo);
-  const versionFolder = `${fetcher.version}-${fetcher.build}`;
+  const versionFolder = versionFolderName(
+    fetcher.version,
+    fetcher.build,
+    fetcher["selectedVersion"]?.sha8 ?? fetcher.installedSha256?.slice(0, 8) ?? "",
+  );
   const installPath = path.join(BROWSERS_DIR, repoName, versionFolder);
 
   if (fs.existsSync(installPath) && fs.existsSync(path.join(installPath, "version.json"))) {
@@ -301,6 +350,8 @@ export async function installVersioned(fetcher: CamoufoxFetcher, replace = false
           version: fetcher.version,
           build: fetcher.build,
           prerelease: fetcher.isPrerelease,
+          sha256: fetcher.installedSha256,
+          created_at: fetcher.installedCreatedAt,
         };
     await fsp.writeFile(path.join(installPath, "version.json"), JSON.stringify(metadata, null, 2));
 
@@ -372,6 +423,7 @@ export function printTree(showHeader = true, showPaths = false): void {
     const status = [
       version.isPrerelease ? "prerelease" : "stable",
       version.isActive ? "active" : undefined,
+      formatAssetDate(version.createdAt) || version.sha256?.slice(0, 8) || undefined,
     ]
       .filter(Boolean)
       .join(", ");
