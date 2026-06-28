@@ -1,6 +1,6 @@
 {
   "name": "camoufox-ts",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "TypeScript port of the Camoufox Python interface",
   "license": "MIT",
   "homepage": "https://camoufox.com/python",
