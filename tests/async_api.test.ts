@@ -99,6 +99,32 @@ describe("AsyncNewBrowser", () => {
     expect(result).toBe(context);
   });
 
+  it("kills the virtual display when browser launch fails", async () => {
+    const launchError = new Error("launch failed");
+    virtualDisplayGetMock.mockResolvedValue(":99");
+    virtualDisplayKillMock.mockResolvedValue(undefined);
+    launchOptionsMock.mockResolvedValue({ headless: false, env: {} });
+    launchMock.mockRejectedValue(launchError);
+
+    await expect(AsyncNewBrowser({ headless: "virtual" })).rejects.toThrow(launchError);
+
+    expect(virtualDisplayKillMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("kills the virtual display when persistent context launch fails", async () => {
+    const launchError = new Error("persistent launch failed");
+    virtualDisplayGetMock.mockResolvedValue(":99");
+    virtualDisplayKillMock.mockResolvedValue(undefined);
+    launchOptionsMock.mockResolvedValue({ headless: false, env: {} });
+    launchPersistentContextMock.mockRejectedValue(launchError);
+
+    await expect(
+      AsyncNewBrowser({ headless: "virtual", persistentContext: true }),
+    ).rejects.toThrow(launchError);
+
+    expect(virtualDisplayKillMock).toHaveBeenCalledTimes(1);
+  });
+
   it("serializes concurrent newPage calls across wrapped contexts", async () => {
     const firstPage = deferred<string>();
     const newPageSpy = vi

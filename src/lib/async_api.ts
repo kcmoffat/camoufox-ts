@@ -114,19 +114,24 @@ export async function AsyncNewBrowser(input: Record<string, any> = {}): Promise<
   const resolvedOptions =
     fromOptions ?? (await launchOptions({ headless: nextHeadless, debug, ...kwargs }));
 
-  if (persistentContext) {
-    const context = await firefox.launchPersistentContext(
-      userDataDir ?? path.join(os.tmpdir(), "camoufox-persistent-context"),
-      resolvedOptions,
-    );
-    return attachVirtualDisplay(
-      wrapContextNewPage(context, { tail: Promise.resolve() }),
-      virtualDisplay,
-    );
-  }
+  try {
+    if (persistentContext) {
+      const context = await firefox.launchPersistentContext(
+        userDataDir ?? path.join(os.tmpdir(), "camoufox-persistent-context"),
+        resolvedOptions,
+      );
+      return attachVirtualDisplay(
+        wrapContextNewPage(context, { tail: Promise.resolve() }),
+        virtualDisplay,
+      );
+    }
 
-  const browser = await firefox.launch(resolvedOptions as LaunchOptions);
-  return attachVirtualDisplay(wrapBrowserNewPage(browser), virtualDisplay);
+    const browser = await firefox.launch(resolvedOptions as LaunchOptions);
+    return attachVirtualDisplay(wrapBrowserNewPage(browser), virtualDisplay);
+  } catch (error) {
+    await virtualDisplay?.kill();
+    throw error;
+  }
 }
 
 function proxyUrlWithCreds(proxy: Record<string, string>): string {
