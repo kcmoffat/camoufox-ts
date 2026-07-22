@@ -158,6 +158,87 @@ describe("AsyncNewBrowser", () => {
     await expect(pendingSecond).resolves.toBe("page-2");
     expect(newPageSpy).toHaveBeenCalledTimes(2);
   });
+
+  it("defaults browser page and context creation to noViewport when window dimensions are spoofed", async () => {
+    const page = {};
+    const newPageSpy = vi.fn().mockResolvedValue(page);
+    const context = {
+      close: vi.fn().mockResolvedValue(undefined),
+      newPage: vi.fn().mockResolvedValue(page),
+    };
+    const newContextSpy = vi.fn().mockResolvedValue(context);
+    const browser = {
+      close: vi.fn().mockResolvedValue(undefined),
+      newContext: newContextSpy,
+      newPage: newPageSpy,
+    };
+    launchOptionsMock.mockResolvedValue({
+      headless: true,
+      env: {
+        CAMOU_CONFIG_1: '{"window.innerWidth":1280,"window.innerHeight":720}',
+      },
+    });
+    launchMock.mockResolvedValue(browser);
+
+    const wrappedBrowser = (await AsyncNewBrowser({ headless: true })) as any;
+    await wrappedBrowser.newPage();
+    await wrappedBrowser.newContext();
+
+    expect(newPageSpy).toHaveBeenCalledWith({ noViewport: true });
+    expect(newContextSpy).toHaveBeenCalledWith({ noViewport: true });
+  });
+
+  it("does not override an explicit viewport option when window dimensions are spoofed", async () => {
+    const newContextSpy = vi.fn().mockResolvedValue({
+      close: vi.fn().mockResolvedValue(undefined),
+      newPage: vi.fn().mockResolvedValue({}),
+    });
+    const newPageSpy = vi.fn().mockResolvedValue({});
+    const browser = {
+      close: vi.fn().mockResolvedValue(undefined),
+      newContext: newContextSpy,
+      newPage: newPageSpy,
+    };
+    launchOptionsMock.mockResolvedValue({
+      headless: true,
+      env: {
+        CAMOU_CONFIG_1: '{"window.outerWidth":1440}',
+      },
+    });
+    launchMock.mockResolvedValue(browser);
+
+    const wrappedBrowser = (await AsyncNewBrowser({ headless: true })) as any;
+    const viewport = { width: 800, height: 600 };
+    await wrappedBrowser.newPage({ viewport });
+    await wrappedBrowser.newContext({ noViewport: false });
+
+    expect(newPageSpy).toHaveBeenCalledWith({ viewport });
+    expect(newContextSpy).toHaveBeenCalledWith({ noViewport: false });
+  });
+
+  it("defaults persistent contexts to noViewport when window dimensions are spoofed", async () => {
+    const context = { close: vi.fn().mockResolvedValue(undefined) };
+    launchPersistentContextMock.mockResolvedValue(context);
+
+    await AsyncNewBrowser({
+      from_options: {
+        headless: true,
+        env: {
+          CAMOU_CONFIG_1: '{"document.body.clientWidth":1024}',
+        },
+      },
+      persistent_context: true,
+      user_data_dir: "/tmp/camoufox-profile",
+    });
+
+    expect(launchPersistentContextMock).toHaveBeenCalledWith("/tmp/camoufox-profile", {
+      headless: true,
+      env: {
+        CAMOU_CONFIG_1: '{"document.body.clientWidth":1024}',
+      },
+      noViewport: true,
+    });
+  });
 });
 
 describe("AsyncNewContext", () => {

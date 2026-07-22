@@ -6,7 +6,12 @@ import { ProxyAgent, fetch as undiciFetch } from "undici";
 
 import { normalizeSnakeCaseKeys } from "./case";
 import { generateContextFingerprint } from "./fingerprints";
-import { launchOptions, attachVirtualDisplay } from "./utils";
+import {
+  applyNoViewportDefault,
+  attachVirtualDisplay,
+  launchOptions,
+  spoofsWindowDimensions,
+} from "./utils";
 import { VirtualDisplay } from "./virtdisplay";
 
 export type CamoufoxBrowser = Browser | BrowserContext;
@@ -113,21 +118,32 @@ export async function AsyncNewBrowser(input: Record<string, any> = {}): Promise<
 
   const resolvedOptions =
     fromOptions ?? (await launchOptions({ headless: nextHeadless, debug, ...kwargs }));
+  const noViewportDefault = spoofsWindowDimensions(resolvedOptions);
 
   try {
     if (persistentContext) {
+      const persistentOptions =
+        noViewportDefault &&
+        !("viewport" in resolvedOptions) &&
+        !("noViewport" in resolvedOptions)
+          ? { ...resolvedOptions, noViewport: true }
+          : resolvedOptions;
       const context = await firefox.launchPersistentContext(
         userDataDir ?? path.join(os.tmpdir(), "camoufox-persistent-context"),
-        resolvedOptions,
+        persistentOptions,
       );
       return attachVirtualDisplay(
-        wrapContextNewPage(context, { tail: Promise.resolve() }),
+        applyNoViewportDefault(wrapContextNewPage(context, { tail: Promise.resolve() })),
         virtualDisplay,
       );
     }
 
     const browser = await firefox.launch(resolvedOptions as LaunchOptions);
-    return attachVirtualDisplay(wrapBrowserNewPage(browser), virtualDisplay);
+    const wrappedBrowser = wrapBrowserNewPage(browser);
+    if (noViewportDefault) {
+      applyNoViewportDefault(wrappedBrowser);
+    }
+    return attachVirtualDisplay(wrappedBrowser, virtualDisplay);
   } catch (error) {
     await virtualDisplay?.kill();
     throw error;

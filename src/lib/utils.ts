@@ -289,6 +289,58 @@ export function warnManualConfig(config: Record<string, any>): void {
   }
 }
 
+const WINDOW_DIMENSION_KEYS = [
+  "window.outerWidth",
+  "window.outerHeight",
+  "window.innerWidth",
+  "window.innerHeight",
+  "document.body.clientWidth",
+  "document.body.clientHeight",
+];
+
+export function spoofsWindowDimensions(fromOptions: Record<string, any>): boolean {
+  const env = (fromOptions.env ?? {}) as Record<string, string>;
+  const chunks = Object.entries(env)
+    .filter(([key]) => key.startsWith("CAMOU_CONFIG_"))
+    .map(([key, value]) => [Number.parseInt(key.slice("CAMOU_CONFIG_".length), 10), value] as const)
+    .filter(([index]) => Number.isFinite(index))
+    .sort(([left], [right]) => left - right);
+
+  if (!chunks.length) {
+    return false;
+  }
+
+  const blob = chunks.map(([, value]) => value).join("");
+  return WINDOW_DIMENSION_KEYS.some((key) => blob.includes(key));
+}
+
+export function applyNoViewportDefault<T extends Record<string, any>>(target: T): T {
+  const mutableTarget = target as Record<string, any>;
+  for (const name of ["newPage", "newContext"] as const) {
+    const original = mutableTarget[name];
+    if (typeof original !== "function") {
+      continue;
+    }
+
+    mutableTarget[name] = ((...args: any[]) => {
+      const last = args.at(-1);
+      const options =
+        last && typeof last === "object" && !Array.isArray(last) ? { ...last } : {};
+      if (!("viewport" in options) && !("noViewport" in options)) {
+        options.noViewport = true;
+      }
+      if (last && typeof last === "object" && !Array.isArray(last)) {
+        args[args.length - 1] = options;
+      } else {
+        args.push(options);
+      }
+      return original.apply(target, args);
+    }) as T[typeof name];
+  }
+
+  return target;
+}
+
 export async function attachVirtualDisplay<T extends { close: (...args: any[]) => Promise<any> }>(
   browser: T,
   virtualDisplay?: VirtualDisplay,
