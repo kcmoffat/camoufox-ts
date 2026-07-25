@@ -2,11 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import { resolveFetchTarget } from "../src/lib/__main__";
 import {
+  clampWindowDimensions,
+  fixNavigatorArch,
+  fixScreenNoTaskbar,
   fromBrowserforge,
   generateContextFingerprint,
   generateFingerprint,
+  generateRandomVoiceSubset,
   getRandomPreset,
   loadPresets,
+  normalizePresetVoices,
+  setMediaDevicesDefaults,
 } from "../src/lib/fingerprints";
 
 describe("fingerprints", () => {
@@ -148,6 +154,45 @@ describe("fingerprints", () => {
     expect(preset?.navigator?.userAgent).toContain("Firefox");
   });
 
+  it("builds non-empty voice objects for every spoofed OS", () => {
+    for (const targetOs of ["macos", "windows", "linux"]) {
+      const voices = generateRandomVoiceSubset(targetOs, "en-US");
+      expect(voices.length).toBeGreaterThan(0);
+      expect(voices[0]).toEqual(
+        expect.objectContaining({
+          name: expect.any(String),
+          lang: expect.any(String),
+          voiceUri: expect.any(String),
+          isDefault: expect.any(Boolean),
+          isLocalService: expect.any(Boolean),
+        }),
+      );
+      expect(voices.filter((voice) => voice.isDefault)).toHaveLength(1);
+    }
+  });
+
+  it("escapes Linux speech-dispatcher voice URIs like Firefox", () => {
+    const voices = generateRandomVoiceSubset("linux", "en-GB");
+    const voice = voices.find((entry) => entry.name === "English (Great Britain)");
+
+    expect(voice?.voiceUri).toBe("urn:moz-tts:speechd:English%20(Great%20Britain)?en-GB");
+    expect(voice?.isDefault).toBe(true);
+  });
+
+  it("normalizes preset voice strings into MaskConfig voice objects", () => {
+    const voices = normalizePresetVoices(["Albert:en-US:local", "Alice:it-IT:local"], "macos");
+
+    expect(voices[0]).toEqual(
+      expect.objectContaining({
+        name: "Albert",
+        lang: "en-US",
+        voiceUri: "urn:moz-tts:osx:albert",
+        isDefault: true,
+        isLocalService: true,
+      }),
+    );
+  });
+
   it("uses the v150 preset bundle for Firefox 149 and newer", () => {
     const legacyPresets = loadPresets("148");
     const v150Presets = loadPresets("149");
@@ -233,5 +278,53 @@ describe("fingerprints", () => {
     expect(resolved.repoName).toBe("official");
     expect(resolved.verString).toBeUndefined();
     expect(resolved.missingChannel).toBe("official/stable");
+  });
+
+  it("corrects BrowserForge navigator arch mismatches on Linux", () => {
+    const config = {
+      "navigator.userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0",
+      "navigator.platform": "Linux armv81",
+      "navigator.oscpu": "Linux armv81",
+    };
+
+    fixNavigatorArch(config, "lin");
+
+    expect(config["navigator.platform"]).toBe("Linux x86_64");
+    expect(config["navigator.oscpu"]).toBe("Linux x86_64");
+  });
+
+  it("fixes screen/taskbar and impossible window geometry", () => {
+    const config = {
+      "screen.width": 1920,
+      "screen.height": 1080,
+      "screen.availWidth": 1920,
+      "screen.availHeight": 1080,
+      "window.outerWidth": 2200,
+      "window.innerWidth": 2100,
+      "window.outerHeight": 1080,
+      "window.innerHeight": 1040,
+    };
+
+    fixScreenNoTaskbar(config, "lin");
+    clampWindowDimensions(config);
+
+    expect(config["screen.availHeight"]).toBe(1053);
+    expect(config["window.outerWidth"]).toBe(1920);
+    expect(config["window.innerWidth"]).toBeLessThanOrEqual(config["window.outerWidth"]);
+    expect(config["window.outerHeight"]).toBe(1053);
+    expect(config["window.innerHeight"]).toBe(1013);
+  });
+
+  it("defaults headless media devices to one mic and one camera", () => {
+    const config: Record<string, any> = {};
+
+    setMediaDevicesDefaults(config);
+
+    expect(config).toMatchObject({
+      "mediaDevices:enabled": true,
+      "mediaDevices:micros": 1,
+      "mediaDevices:webcams": 1,
+      "mediaDevices:speakers": 0,
+    });
   });
 });

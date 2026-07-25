@@ -31,7 +31,16 @@ const PRESETS_V150_FILE = assetPath("fingerprint-presets-v150.json");
 const PRESETS_V150_MIN_FF = 149;
 const presetsCache = new Map<string, Record<string, any>>();
 let fontsCache: Record<string, string[]> | undefined;
-let voicesCache: Record<string, string[]> | undefined;
+type VoiceEntry = [name: string, lang: string, voiceType: string];
+type VoiceObject = {
+  name: string;
+  lang: string;
+  voiceUri: string;
+  isDefault: boolean;
+  isLocalService: boolean;
+};
+
+let voicesCache: Record<string, VoiceEntry[]> | undefined;
 
 const MACOS_MARKER_FONTS = ["Helvetica Neue", "PingFang HK", "PingFang SC", "PingFang TC"];
 const LINUX_MARKER_FONTS = ["Arimo", "Cousine", "Tinos", "Twemoji Mozilla"];
@@ -84,6 +93,11 @@ const ESSENTIAL_FONTS_LINUX = [
 ];
 
 const ESSENTIAL_VOICES_MACOS = ["Samantha", "Alex", "Fred", "Victoria", "Karen", "Daniel"];
+const VOICE_URI_PREFIX: Record<"mac" | "win" | "lin", string> = {
+  mac: "urn:moz-tts:osx:",
+  win: "urn:moz-tts:sapi:",
+  lin: "urn:moz-tts:speechd:",
+};
 
 const OS_TO_PRESET_KEY: Record<string, string> = {
   windows: "windows",
@@ -112,14 +126,31 @@ function loadOsFonts(): Record<string, string[]> {
   return fontsCache;
 }
 
-function loadOsVoices(): Record<string, string[]> {
+function loadOsVoices(): Record<string, VoiceEntry[]> {
   if (!voicesCache) {
     const raw = JSON.parse(fs.readFileSync(assetPath("voices.json"), "utf8")) as Record<
       string,
       string[]
     >;
     voicesCache = Object.fromEntries(
-      Object.entries(raw).map(([key, values]) => [key, values.map((value) => value.split(":")[0])]),
+      Object.entries(raw).map(([key, values]) => [
+        key,
+        values.flatMap((value) => {
+          const last = value.lastIndexOf(":");
+          if (last < 0) {
+            return [];
+          }
+          const voiceType = value.slice(last + 1);
+          const before = value.slice(0, last);
+          const langSep = before.lastIndexOf(":");
+          if (langSep < 0) {
+            return [];
+          }
+          const lang = before.slice(langSep + 1);
+          const name = before.slice(0, langSep);
+          return name && lang ? [[name, lang, voiceType] satisfies VoiceEntry] : [];
+        }),
+      ]),
     );
   }
   return voicesCache;
@@ -190,21 +221,209 @@ export function generateRandomFontSubset(targetOs: string): string[] {
   return Array.from(new Set(result));
 }
 
-export function generateRandomVoiceSubset(targetOs: string): string[] {
+function voiceUriSlug(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "");
+}
+
+function voiceUri(osKey: "mac" | "win" | "lin", name: string, lang: string): string {
+  if (osKey === "lin") {
+    let escaped = "";
+    for (const ch of name) {
+      if (ch === " ") {
+        escaped += "%20";
+      } else if (ch.charCodeAt(0) <= 0x7f) {
+        escaped += ch;
+      } else {
+        escaped += Array.from(Buffer.from(ch)).map((byte) => `%${byte.toString(16).toUpperCase().padStart(2, "0")}`).join("");
+      }
+    }
+    return `${VOICE_URI_PREFIX.lin}${escaped}?${lang}`;
+  }
+
+  return `${VOICE_URI_PREFIX[osKey]}${voiceUriSlug(name)}`;
+}
+
+export function generateRandomVoiceSubset(targetOs: string, locale?: string): VoiceObject[] {
   const osVoices = loadOsVoices();
-  const osKey = { macos: "mac", windows: "win", linux: "lin" }[targetOs] ?? "mac";
+  const osKey = ({ macos: "mac", windows: "win", linux: "lin" }[targetOs] ?? "mac") as
+    | "mac"
+    | "win"
+    | "lin";
   const fullList = osVoices[osKey] ?? [];
   if (!fullList.length) {
     return [];
   }
-  if (targetOs === "windows") {
-    return [...fullList];
+
+  let selected: VoiceEntry[];
+  if (osKey === "win" || osKey === "lin") {
+    selected = [...fullList];
+  } else {
+    const essential = new Set(ESSENTIAL_VOICES_MACOS);
+    const result = fullList.filter(([name]) => essential.has(name));
+    const nonEssential = fullList.filter(([name]) => !essential.has(name));
+    result.push(...pickRandomSubset(nonEssential, 40, 80));
+    selected = result;
   }
-  const essential = new Set(ESSENTIAL_VOICES_MACOS);
-  const result = fullList.filter((voice) => essential.has(voice));
-  const nonEssential = fullList.filter((voice) => !essential.has(voice));
-  result.push(...pickRandomSubset(nonEssential, 40, 80));
-  return Array.from(new Set(result));
+
+  const unique = new Map<string, VoiceObject>();
+  for (const [name, lang, voiceType] of selected) {
+    unique.set(`${name}:${lang}:${voiceType}`, {
+      name,
+      lang,
+      voiceUri: voiceUri(osKey, name, lang),
+      isDefault: false,
+      isLocalService: voiceType === "local",
+    });
+  }
+
+  const voices = [...unique.values()];
+  if (voices.length) {
+    const prefix = locale?.split("-")[0]?.toLowerCase() ?? "en";
+    const exactMatchIndex = locale
+      ? voices.findIndex((voice) => voice.lang.toLowerCase() === locale.toLowerCase())
+      : -1;
+    const prefixMatchIndex =
+      exactMatchIndex >= 0
+        ? exactMatchIndex
+        : voices.findIndex((voice) => voice.lang.split("-")[0]?.toLowerCase() === prefix);
+    voices[(prefixMatchIndex >= 0 ? prefixMatchIndex : 0)].isDefault = true;
+  }
+
+  return voices;
+}
+
+export function normalizePresetVoices(voices: any, targetOs: string): VoiceObject[] {
+  const osKey = ({ macos: "mac", windows: "win", linux: "lin" }[targetOs] ?? "mac") as
+    | "mac"
+    | "win"
+    | "lin";
+  const result: VoiceObject[] = [];
+
+  for (const entry of voices ?? []) {
+    if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      result.push(entry as VoiceObject);
+      continue;
+    }
+
+    if (typeof entry !== "string") {
+      continue;
+    }
+    const last = entry.lastIndexOf(":");
+    if (last < 0) {
+      continue;
+    }
+    const voiceType = entry.slice(last + 1);
+    const before = entry.slice(0, last);
+    const langSep = before.lastIndexOf(":");
+    if (langSep < 0) {
+      continue;
+    }
+    const lang = before.slice(langSep + 1);
+    const name = before.slice(0, langSep);
+    if (!name || !lang) {
+      continue;
+    }
+    result.push({
+      name,
+      lang,
+      voiceUri: voiceUri(osKey, name, lang),
+      isDefault: false,
+      isLocalService: voiceType === "local",
+    });
+  }
+
+  if (result.length && !result.some((voice) => voice.isDefault)) {
+    result[0].isDefault = true;
+  }
+
+  return result;
+}
+
+export function fixNavigatorArch(config: Record<string, any>, targetOs: string): void {
+  if (targetOs !== "lin") {
+    return;
+  }
+  const userAgent = config["navigator.userAgent"];
+  if (typeof userAgent !== "string") {
+    return;
+  }
+
+  const target =
+    userAgent.includes("Linux x86_64")
+      ? "Linux x86_64"
+      : userAgent.includes("Linux i686")
+        ? "Linux i686"
+        : "";
+  if (!target) {
+    return;
+  }
+  if (config["navigator.platform"] !== target) {
+    config["navigator.platform"] = target;
+  }
+  if (config["navigator.oscpu"] !== target) {
+    config["navigator.oscpu"] = target;
+  }
+}
+
+export function fixScreenNoTaskbar(config: Record<string, any>, targetOs: string): void {
+  const screenWidth = config["screen.width"];
+  const screenHeight = config["screen.height"];
+  const availWidth = config["screen.availWidth"];
+  const availHeight = config["screen.availHeight"];
+  if (!(screenWidth && screenHeight && availWidth === screenWidth && availHeight === screenHeight)) {
+    return;
+  }
+
+  const taskbar = targetOs === "win" ? 40 : targetOs === "mac" ? 25 : 27;
+  const newAvailHeight = screenHeight - taskbar;
+  config["screen.availHeight"] = newAvailHeight;
+  const outerHeight = config["window.outerHeight"];
+  if (outerHeight && outerHeight > newAvailHeight) {
+    const innerHeight = config["window.innerHeight"];
+    const chrome = innerHeight ? outerHeight - innerHeight : 0;
+    config["window.outerHeight"] = newAvailHeight;
+    if (innerHeight) {
+      config["window.innerHeight"] = newAvailHeight - chrome;
+    }
+  }
+}
+
+export function clampWindowDimensions(config: Record<string, any>): void {
+  for (const axis of ["Width", "Height"] as const) {
+    const screen = config[`screen.${axis.toLowerCase()}`];
+    const avail = config[`screen.avail${axis}`];
+    const outer = config[`window.outer${axis}`];
+    const inner = config[`window.inner${axis}`];
+
+    if (screen && avail && avail > screen) {
+      config[`screen.avail${axis}`] = screen;
+    }
+    const availClamped = config[`screen.avail${axis}`] ?? screen;
+    const outerCap = availClamped ?? screen;
+    if (outer && outerCap && outer > outerCap) {
+      const chrome = inner ? Math.max(0, outer - inner) : 0;
+      config[`window.outer${axis}`] = outerCap;
+      if (inner) {
+        config[`window.inner${axis}`] = Math.max(1, outerCap - chrome);
+      }
+    }
+
+    const outerClamped = config[`window.outer${axis}`] ?? outer;
+    const innerNow = config[`window.inner${axis}`];
+    if (innerNow && outerClamped && innerNow > outerClamped) {
+      config[`window.inner${axis}`] = outerClamped;
+    }
+  }
+}
+
+export function setMediaDevicesDefaults(config: Record<string, any>): void {
+  if (Object.keys(config).some((key) => key.startsWith("mediaDevices:"))) {
+    return;
+  }
+  config["mediaDevices:enabled"] = true;
+  config["mediaDevices:micros"] = 1;
+  config["mediaDevices:webcams"] = 1;
+  config["mediaDevices:speakers"] = 0;
 }
 
 function selectPresetsFile(ffVersion?: string | number): string {
@@ -351,7 +570,7 @@ export function fromPreset(preset: Record<string, any>, ffVersion?: string): Rec
     config.voices = generateRandomVoiceSubset(targetOs);
   } catch {
     if (preset.speechVoices) {
-      config.voices = preset.speechVoices;
+      config.voices = normalizePresetVoices(preset.speechVoices, targetOs);
     }
   }
 
@@ -407,9 +626,12 @@ function buildInitScript(values: Record<string, any>): string {
     );
   }
   if (Array.isArray(values.speechVoices) && values.speechVoices.length) {
+    const voiceNames = values.speechVoices.map((voice: string | VoiceObject) =>
+      typeof voice === "string" ? voice : voice.name,
+    );
     lines.push(
       `  if (typeof w.setSpeechVoices === "function") w.setSpeechVoices(${JSON.stringify(
-        values.speechVoices.join(","),
+        voiceNames.join(","),
       )});`,
     );
   }

@@ -17,12 +17,16 @@ import {
   NonFirefoxFingerprint,
 } from "./exceptions";
 import {
+  clampWindowDimensions,
+  fixNavigatorArch,
+  fixScreenNoTaskbar,
   fromBrowserforge,
   fromPreset,
   generateFingerprint,
   generateRandomFontSubset,
   generateRandomVoiceSubset,
   getRandomPreset,
+  setMediaDevicesDefaults,
   type ScreenConstraint,
 } from "./fingerprints";
 import { geoipAllowed, getGeolocation } from "./geolocation";
@@ -454,6 +458,9 @@ export async function launchOptions(input: {
   if (!iKnowWhatImDoing) {
     warnManualConfig(config);
   }
+  const userSetNavigator = isDomainSet(config, "navigator.");
+  const userSetScreenWindow = isDomainSet(config, "screen.", "window.");
+  const userSetMediaDevices = isDomainSet(config, "mediaDevices:");
   if (os) {
     checkValidOs(os);
   } else if (webglConfig) {
@@ -506,6 +513,13 @@ export async function launchOptions(input: {
   }
 
   const targetOs = getTargetOs(config);
+  if (!userSetNavigator) {
+    fixNavigatorArch(config, targetOs);
+  }
+  if (!userSetScreenWindow) {
+    fixScreenNoTaskbar(config, targetOs);
+    clampWindowDimensions(config);
+  }
   setInto(config, "window.history.length", randRange(1, 6));
 
   if (fonts) {
@@ -531,6 +545,9 @@ export async function launchOptions(input: {
     try {
       config.voices = generateRandomVoiceSubset({ win: "windows", mac: "macos", lin: "linux" }[targetOs]);
     } catch {}
+  }
+  if (!userSetMediaDevices) {
+    setMediaDevicesDefaults(config);
   }
 
   setInto(config, "fonts:spacing_seed", randomSeed());

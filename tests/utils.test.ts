@@ -257,6 +257,86 @@ describe("launchOptions", () => {
     expect(options.disableTheming).toBeUndefined();
   });
 
+  it("sanitizes generated BrowserForge geometry and media devices by default", async () => {
+    const bundleDir = await createBundleDir();
+    mocks.camoufoxPath.mockResolvedValue(bundleDir);
+    mocks.launchPath.mockResolvedValue("/tmp/camoufox-bin");
+
+    const options = await launchOptions({
+      fingerprint: {
+        navigator: {
+          userAgent:
+            "Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0",
+          platform: "Linux armv81",
+          hardwareConcurrency: 8,
+        },
+        screen: {
+          width: 1920,
+          height: 1080,
+          availWidth: 1920,
+          availHeight: 1080,
+          outerWidth: 2200,
+          outerHeight: 1080,
+          innerWidth: 2100,
+          innerHeight: 1040,
+          colorDepth: 24,
+        },
+      } as any,
+      blockWebgl: true,
+      excludeAddons: [DefaultAddons.UBO],
+      iKnowWhatImDoing: true,
+    });
+
+    const config = readConfigFromEnv(options.env);
+    expect(config["navigator.platform"]).toBe("Linux x86_64");
+    expect(config["navigator.oscpu"]).toBe("Linux x86_64");
+    expect(config["screen.availHeight"]).toBe(1053);
+    expect(config["window.outerWidth"]).toBe(1920);
+    expect(config["window.innerWidth"]).toBeLessThanOrEqual(config["window.outerWidth"]);
+    expect(config["mediaDevices:enabled"]).toBe(true);
+    expect(config["mediaDevices:micros"]).toBe(1);
+    expect(config["mediaDevices:webcams"]).toBe(1);
+    expect(config["mediaDevices:speakers"]).toBe(0);
+  });
+
+  it("preserves caller-provided navigator, screen, and media-device overrides", async () => {
+    const bundleDir = await createBundleDir();
+    mocks.camoufoxPath.mockResolvedValue(bundleDir);
+    mocks.launchPath.mockResolvedValue("/tmp/camoufox-bin");
+
+    const options = await launchOptions({
+      fingerprint: {
+        navigator: {
+          userAgent:
+            "Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0",
+          platform: "Linux armv81",
+          hardwareConcurrency: 8,
+        },
+        screen: {
+          width: 1920,
+          height: 1080,
+          availWidth: 1920,
+          availHeight: 1080,
+          colorDepth: 24,
+        },
+      } as any,
+      config: {
+        "navigator.platform": "CustomPlatform",
+        "screen.availHeight": 1000,
+        "mediaDevices:webcams": 5,
+      },
+      blockWebgl: true,
+      excludeAddons: [DefaultAddons.UBO],
+      iKnowWhatImDoing: true,
+    });
+
+    const config = readConfigFromEnv(options.env);
+    expect(config["navigator.platform"]).toBe("CustomPlatform");
+    expect(config["screen.availHeight"]).toBe(1000);
+    expect(config["mediaDevices:webcams"]).toBe(5);
+    expect(config["mediaDevices:micros"]).toBeUndefined();
+  });
+
   it("skips deprecated properties removed upstream", async () => {
     const bundleDir = await createBundleDir();
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
