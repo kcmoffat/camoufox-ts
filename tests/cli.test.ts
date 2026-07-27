@@ -56,7 +56,17 @@ describe("createCliProgram", () => {
     expect(
       normalizeHelp(program.commands.find((command) => command.name() === "fetch")?.helpInformation() ?? ""),
     ).toContain(
+      "camoufox fetch 135.0-beta.25",
+    );
+    expect(
+      normalizeHelp(program.commands.find((command) => command.name() === "fetch")?.helpInformation() ?? ""),
+    ).toContain(
       "camoufox fetch official/stable/135.0-beta.25",
+    );
+    expect(
+      normalizeHelp(program.commands.find((command) => command.name() === "fetch")?.helpInformation() ?? ""),
+    ).toContain(
+      "camoufox fetch official/stable/135.0-beta.25-aaaaaaaa",
     );
     expect(
       normalizeHelp(program.commands.find((command) => command.name() === "set")?.helpInformation() ?? ""),
@@ -95,6 +105,26 @@ describe("createCliProgram", () => {
     expect(resolveFetchTarget(cache, {}, "official/prerelease")).toEqual({
       repoName: "official",
       verString: "135.0.2-beta.25",
+    });
+  });
+
+  it("resolves bare version-build fetch specifiers against the default repo", () => {
+    const cache = {
+      repos: [
+        {
+          name: "Official",
+          versions: [
+            { version: "135.0.2", build: "beta.25", is_prerelease: true },
+            { version: "135.0.1", build: "beta.24", is_prerelease: false },
+          ],
+        },
+      ],
+    };
+
+    expect(resolveFetchTarget(cache, {}, "135.0.1-beta.24")).toEqual({
+      repoName: "official",
+      verString: "135.0.1-beta.24",
+      sha256: undefined,
     });
   });
 

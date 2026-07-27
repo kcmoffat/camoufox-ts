@@ -261,6 +261,38 @@ describe("fingerprints", () => {
     expect(resolved.missingChannel).toBeUndefined();
   });
 
+  it("resolves explicit sha-qualified fetch targets to the requested asset", () => {
+    const resolved = resolveFetchTarget(
+      {
+        repos: [
+          {
+            name: "Official",
+            versions: [
+              {
+                version: "135.0.1",
+                build: "beta.24",
+                is_prerelease: false,
+                sha256: "bbbbbbbb22222222",
+              },
+              {
+                version: "135.0.1",
+                build: "beta.24",
+                is_prerelease: false,
+                sha256: "aaaaaaaa11111111",
+              },
+            ],
+          },
+        ],
+      },
+      {},
+      "official/stable/135.0.1-beta.24-aaaaaaaa",
+    );
+
+    expect(resolved.repoName).toBe("official");
+    expect(resolved.verString).toBe("135.0.1-beta.24");
+    expect(resolved.sha256).toBe("aaaaaaaa11111111");
+  });
+
   it("reports when an explicit repo/channel fetch target has no synced builds", () => {
     const resolved = resolveFetchTarget(
       {

@@ -118,6 +118,30 @@ function findCachedVersion(
   );
 }
 
+function resolveVersionSpecifier(
+  versions: Array<Record<string, any>>,
+  specifier: string,
+): { verString?: string; sha256?: string } {
+  const normalized = specifier.replace(/^v/, "");
+
+  for (const version of versions) {
+    const sha256 = String(version.sha256 ?? "");
+    if (sha256 && normalized === `${fullVersionOf(version)}-${sha256.slice(0, 8)}`) {
+      return {
+        verString: fullVersionOf(version),
+        sha256,
+      };
+    }
+  }
+
+  const latest = versions.find((version) => fullVersionOf(version) === normalized);
+  if (latest) {
+    return { verString: fullVersionOf(latest) };
+  }
+
+  return {};
+}
+
 function toAvailableVersion(candidate: Record<string, any>): AvailableVersion {
   return new AvailableVersion({
     version: new Version(candidate.build, candidate.version),
@@ -549,23 +573,39 @@ export function resolveFetchTarget(
 
   let repoName: string | undefined;
   let verString: string | undefined;
+  let sha256: string | undefined;
 
   if (version) {
     const parts = version.split("/");
-    if (parts.length === 3) {
+    if (parts.length === 1) {
+      repoName = RepoConfig.getDefaultName().toLowerCase();
+      const repoData = findRepoVersions(cache, repoName);
+      if (!repoData) {
+        return { repoName };
+      }
+      ({ verString, sha256 } = resolveVersionSpecifier(repoData.versions ?? [], parts[0]));
+    } else if (parts.length === 3) {
       repoName = parts[0];
-      verString = parts[2].replace(/^v/, "");
+      const repoData = findRepoVersions(cache, repoName);
+      if (!repoData) {
+        return { repoName };
+      }
+      ({ verString, sha256 } = resolveVersionSpecifier(repoData.versions ?? [], parts[2]));
     } else if (parts.length === 2) {
       const [repo, selector] = parts;
       if (selector === "stable" || selector === "prerelease") {
         return resolveChannelVersion(repo, selector);
       }
       repoName = repo;
-      verString = selector.replace(/^v/, "");
+      const repoData = findRepoVersions(cache, repoName);
+      if (!repoData) {
+        return { repoName };
+      }
+      ({ verString, sha256 } = resolveVersionSpecifier(repoData.versions ?? [], selector));
     } else {
       return {};
     }
-    return { repoName, verString };
+    return { repoName, verString, sha256 };
   }
 
   if (config.pinned) {
@@ -601,7 +641,7 @@ export function createCliProgram(): Command {
     .command("fetch")
     .summary("Install the active version, a channel target, or a specific version")
     .description(
-      "Install the active version, a channel target, or a specific version.\n\nExamples:\n  camoufox fetch\n  camoufox fetch official/stable\n  camoufox fetch official/135.0-beta.25\n  camoufox fetch official/stable/135.0-beta.25",
+      "Install the active version, a channel target, or a specific version.\n\nExamples:\n  camoufox fetch\n  camoufox fetch 135.0-beta.25\n  camoufox fetch official/stable\n  camoufox fetch official/135.0-beta.25\n  camoufox fetch official/stable/135.0-beta.25\n  camoufox fetch official/stable/135.0-beta.25-aaaaaaaa",
     )
     .argument("[version]")
     .action(async (version?: string) => {
@@ -616,7 +656,10 @@ export function createCliProgram(): Command {
 
       const { repoName, verString, sha256, missingChannel } = resolveFetchTarget(cache, config, version);
       if (version && !repoName && !verString) {
-        rprint("Format: <repo>/<channel>, <repo>/<version>, or <repo>/<channel>/<version>", "red");
+        rprint(
+          "Format: version-build, <repo>/<channel>, <repo>/<version>, or <repo>/<channel>/<version>",
+          "red",
+        );
         return;
       }
       if (missingChannel) {
