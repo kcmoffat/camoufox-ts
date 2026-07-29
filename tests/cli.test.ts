@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createCliProgram, findInstalled, resolveFetchTarget } from "../src/lib/__main__";
+import * as multiversion from "../src/lib/multiversion";
 
 const installedVersions = [
   {
@@ -9,6 +10,7 @@ const installedVersions = [
     channelPath: "official/stable/135.0.1-beta.24",
     relativePath: "browsers/official/135.0.1-beta.24",
     isPrerelease: false,
+    sha256: "aaaaaaaa11111111",
   },
   {
     repoName: "official",
@@ -16,6 +18,7 @@ const installedVersions = [
     channelPath: "official/prerelease/135.0.2-beta.25",
     relativePath: "browsers/official/135.0.2-beta.25",
     isPrerelease: true,
+    sha256: "bbbbbbbb22222222",
   },
 ];
 
@@ -34,6 +37,10 @@ function normalizeHelp(help: string): string {
 }
 
 describe("createCliProgram", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("surfaces upstream-style command descriptions in top-level help", () => {
     const help = normalizeHelp(createCliProgram().helpInformation());
 
@@ -133,5 +140,18 @@ describe("createCliProgram", () => {
     expect(findInstalled("official/prerelease")?.channelPath).toBe(
       "official/prerelease/135.0.2-beta.25",
     );
+  });
+
+  it("prints the pinned sha suffix for python-style pinned_sha configs", async () => {
+    vi.spyOn(multiversion, "loadConfig").mockReturnValue({
+      channel: "official/stable",
+      pinned: "135.0.1-beta.24",
+      pinned_sha: "aaaaaaaa11111111",
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await createCliProgram().parseAsync(["active"], { from: "user" });
+
+    expect(log).toHaveBeenCalledWith("official/stable/135.0.1-beta.24 (aaaaaaaa)");
   });
 });

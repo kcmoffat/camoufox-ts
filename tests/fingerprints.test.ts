@@ -239,6 +239,23 @@ describe("fingerprints", () => {
     expect(resolved.missingChannel).toBe("official/stable");
   });
 
+  it("resolves pinned versions from python-style pinned_sha configs", () => {
+    const resolved = resolveFetchTarget(
+      {},
+      {
+        channel: "official/stable",
+        pinned: "135.0.1-beta.24",
+        pinned_sha: "aaaaaaaa11111111",
+      },
+    );
+
+    expect(resolved).toEqual({
+      repoName: "official",
+      verString: "135.0.1-beta.24",
+      sha256: "aaaaaaaa11111111",
+    });
+  });
+
   it("resolves explicit repo/channel fetch targets to the latest synced build", () => {
     const resolved = resolveFetchTarget(
       {

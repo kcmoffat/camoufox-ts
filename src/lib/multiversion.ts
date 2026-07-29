@@ -24,6 +24,7 @@ export type StoredConfig = {
   active_version?: string | null;
   channel?: string;
   pinned?: string;
+  pinned_sha?: string;
   pinnedSha?: string;
   active_repo?: string;
   active_build?: string;
@@ -44,8 +45,25 @@ export function getDefaultChannel(): string {
 }
 
 export function saveConfig(config: Record<string, any>): void {
+  if (!("pinned_sha" in config) && "pinnedSha" in config) {
+    config.pinned_sha = config.pinnedSha;
+  }
+  delete config.pinnedSha;
   fs.mkdirSync(INSTALL_DIR, { recursive: true });
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+}
+
+export function getPinnedSha(config: Record<string, any>): string | undefined {
+  return config.pinned_sha ?? config.pinnedSha;
+}
+
+export function setPinnedSha(config: Record<string, any>, sha256?: string): void {
+  if (sha256) {
+    config.pinned_sha = sha256;
+  } else {
+    delete config.pinned_sha;
+  }
+  delete config.pinnedSha;
 }
 
 export function loadRepoCache(): Record<string, any> {

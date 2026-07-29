@@ -21,6 +21,7 @@ import {
   CONFIG_FILE,
   REPO_CACHE_FILE,
   findInstalledForVersion,
+  getPinnedSha,
   InstalledVersion,
   getDefaultChannel,
   listInstalled,
@@ -31,6 +32,7 @@ import {
   saveConfig,
   saveRepoCache,
   setActive,
+  setPinnedSha,
 } from "./multiversion";
 import {
   AvailableVersion,
@@ -272,7 +274,7 @@ export function setChannel(repoName: string, channelType: "stable" | "prerelease
   const config = loadConfig();
   config.channel = `${repoName}/${channelType}`;
   delete config.pinned;
-  delete config.pinnedSha;
+  setPinnedSha(config);
 
   const cache = loadRepoCache();
   const candidates = (cache.repos ?? [])
@@ -313,11 +315,7 @@ export function setPinned(
   const verString = `${versionData.version}-${versionData.build}`;
   config.channel = `${repoName}/${channelType}`;
   config.pinned = verString;
-  if (versionData.sha256) {
-    config.pinnedSha = versionData.sha256;
-  } else {
-    delete config.pinnedSha;
-  }
+  setPinnedSha(config, versionData.sha256);
   if (installed) {
     config.active_version = installed.relativePath;
     saveConfig(config);
@@ -612,7 +610,7 @@ export function resolveFetchTarget(
     const channel = config.channel ?? "";
     repoName = channel.includes("/") ? channel.split("/")[0] : channel;
     verString = config.pinned;
-    return { repoName, verString, sha256: config.pinnedSha };
+    return { repoName, verString, sha256: getPinnedSha(config) };
   }
 
   const channel = config.channel ?? getDefaultChannel();
@@ -925,9 +923,11 @@ export function createCliProgram(): Command {
     const channel = config.channel ?? getDefaultChannel();
     if (pinned) {
       const display = `${channel.toLowerCase()}/${pinned}`;
+      const pinnedSha = getPinnedSha(config);
       const target = findInstalled(display);
       if (target) {
-        console.log(target.channelPath);
+        const sha8 = (pinnedSha ?? target.sha256 ?? "").slice(0, 8);
+        console.log(sha8 ? `${target.channelPath} (${sha8})` : target.channelPath);
       } else {
         process.stdout.write(`${display} `);
         rprint("(not fetched)", "yellow");
