@@ -20,6 +20,7 @@ export class VirtualDisplay {
   private static readonly displayFd = 3;
   private static readonly displayReadTimeoutMs = 10_000;
   private static readonly killTimeoutMs = 5_000;
+  private static readonly x11SocketDir = "/tmp/.X11-unix";
 
   static readonly xvfbArgs = [
     "-screen",
@@ -181,55 +182,56 @@ export class VirtualDisplay {
 
     const proc = this.proc;
     if (!proc || proc.exitCode != null) {
+      this.resetState();
       return;
     }
 
     this.killPromise = (async () => {
-      if (!proc.killed) {
-        if (this.debug) {
-          console.log("Terminating virtual display:", this.displayNumber);
-        }
-        proc.kill();
-      }
-
-      if (proc.exitCode != null) {
-        return;
-      }
-
-      const waitForExit = async (): Promise<void> => {
-        if (proc.exitCode != null) {
-          return;
-        }
-        await once(proc, "exit");
-      };
-
-      const timedOut = Symbol("timedOut");
-      const result = await Promise.race([
-        waitForExit().then(() => undefined),
-        new Promise<symbol>((resolve) => {
-          setTimeout(() => resolve(timedOut), VirtualDisplay.killTimeoutMs);
-        }),
-      ]);
-
-      if (result !== timedOut || proc.exitCode != null) {
-        return;
-      }
-
       if (this.debug) {
-        console.log("Xvfb did not exit in time, killing forcefully");
+        console.log("Terminating virtual display:", this.displayNumber);
       }
       proc.kill("SIGKILL");
 
       if (proc.exitCode == null) {
-        await once(proc, "exit");
+        const timedOut = Symbol("timedOut");
+        const result = await Promise.race([
+          once(proc, "exit").then(() => undefined),
+          new Promise<symbol>((resolve) => {
+            setTimeout(() => resolve(timedOut), VirtualDisplay.killTimeoutMs);
+          }),
+        ]);
+        if (result === timedOut && this.debug) {
+          console.log("Xvfb did not exit after SIGKILL");
+        }
       }
+
+      this.removeDisplayArtifacts();
     })();
 
     try {
       await this.killPromise;
     } finally {
+      this.resetState();
       this.killPromise = undefined;
     }
+  }
+
+  private removeDisplayArtifacts(): void {
+    if (this.displayNumber == null) {
+      return;
+    }
+    try {
+      fs.rmSync(`/tmp/.X${this.displayNumber}-lock`, { force: true });
+    } catch {}
+    try {
+      fs.rmSync(`${VirtualDisplay.x11SocketDir}/X${this.displayNumber}`, { force: true });
+    } catch {}
+  }
+
+  private resetState(): void {
+    this.proc = undefined;
+    this.displayPromise = undefined;
+    this.displayNumber = undefined;
   }
 
   static assertLinux(): void {

@@ -1,5 +1,6 @@
 import { PassThrough } from "node:stream";
 import { EventEmitter } from "node:events";
+import fs from "node:fs";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -146,7 +147,7 @@ describe("VirtualDisplay", () => {
 
     const killPromise = firstDisplay.kill();
     firstChild.child.exitCode = 0;
-    firstChild.child.emit("exit", 0, "SIGTERM");
+    firstChild.child.emit("exit", 0, "SIGKILL");
     await killPromise;
     expect(firstChild.child.kill).toHaveBeenCalledOnce();
 
@@ -157,7 +158,7 @@ describe("VirtualDisplay", () => {
     expect(spawnMock).toHaveBeenCalledTimes(2);
   });
 
-  it("waits for Xvfb to exit after terminate", async () => {
+  it("waits for Xvfb to exit after SIGKILL", async () => {
     const { child, pipe } = createChild();
 
     whichSyncMock.mockReturnValue(process.execPath);
@@ -171,6 +172,7 @@ describe("VirtualDisplay", () => {
 
     const killPromise = display.kill();
     expect(child.kill).toHaveBeenCalledOnce();
+    expect(child.kill).toHaveBeenCalledWith("SIGKILL");
 
     let settled = false;
     void killPromise.then(() => {
@@ -181,15 +183,15 @@ describe("VirtualDisplay", () => {
     expect(settled).toBe(false);
 
     child.exitCode = 0;
-    child.emit("exit", 0, "SIGTERM");
+    child.emit("exit", 0, "SIGKILL");
 
     await expect(killPromise).resolves.toBeUndefined();
   });
 
-  it("force kills Xvfb if it does not exit after terminate", async () => {
+  it("cleans up X11 artifacts and resets state after kill", async () => {
     const { child, pipe } = createChild();
+    const rmSyncSpy = vi.spyOn(fs, "rmSync").mockImplementation(() => undefined);
 
-    vi.useFakeTimers();
     whichSyncMock.mockReturnValue(process.execPath);
     spawnMock.mockReturnValue(child);
 
@@ -200,10 +202,23 @@ describe("VirtualDisplay", () => {
     await expect(firstGet).resolves.toBe(":117");
 
     const killPromise = display.kill();
-    expect(child.kill).toHaveBeenNthCalledWith(1);
+    child.exitCode = 0;
+    child.emit("exit", 0, "SIGKILL");
 
-    await vi.advanceTimersByTimeAsync(5_000);
     await expect(killPromise).resolves.toBeUndefined();
-    expect(child.kill).toHaveBeenNthCalledWith(2, "SIGKILL");
+    expect(child.kill).toHaveBeenCalledOnce();
+    expect(child.kill).toHaveBeenCalledWith("SIGKILL");
+    expect(rmSyncSpy).toHaveBeenNthCalledWith(1, "/tmp/.X117-lock", { force: true });
+    expect(rmSyncSpy).toHaveBeenNthCalledWith(2, "/tmp/.X11-unix/X117", { force: true });
+    expect(display.proc).toBeUndefined();
+
+    const { child: nextChild, pipe: nextPipe } = createChild();
+    spawnMock.mockReturnValueOnce(nextChild);
+
+    const secondGet = display.get();
+    nextPipe.end("118\n");
+
+    await expect(secondGet).resolves.toBe(":118");
+    expect(spawnMock).toHaveBeenCalledTimes(2);
   });
 });
