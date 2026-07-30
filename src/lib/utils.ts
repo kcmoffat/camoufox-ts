@@ -48,6 +48,17 @@ const CACHE_PREFS = {
   "browser.cache.disk.smart_size.enabled": true,
 } as const;
 
+const DEFAULT_FIREFOX_USER_PREFS = {
+  // Match upstream Camoufox/Playwright defaults for proxy-safe plain HTTP and WebRTC.
+  "dom.security.https_first": false,
+  "media.peerconnection.ice.no_host": false,
+  "media.peerconnection.ice.default_address_only": true,
+  "media.peerconnection.ice.proxy_only_if_behind_proxy": true,
+  "media.peerconnection.ice.proxy_only_if_pbmode": true,
+  "media.peerconnection.ice.obfuscate_host_addresses": true,
+  "network.proxy.socks_remote_dns": true,
+} as const;
+
 export async function getEnvVars(
   configMap: Record<string, any>,
   userAgentOs: "mac" | "win" | "lin",
@@ -594,6 +605,8 @@ export async function launchOptions(input: {
   if (mainWorldEval) {
     setInto(config, "allowMainWorld", true);
   }
+
+  mergeInto(firefoxUserPrefs, DEFAULT_FIREFOX_USER_PREFS);
 
   if (blockImages) {
     LeakWarning.warn("block_images", iKnowWhatImDoing);

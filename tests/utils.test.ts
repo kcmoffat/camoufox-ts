@@ -177,6 +177,7 @@ describe("launchOptions", () => {
 
     const options = await launchOptions({
       os: "linux",
+      screen: { maxWidth: 1920, maxHeight: 1080 },
       blockWebgl: true,
       excludeAddons: [DefaultAddons.UBO],
       iKnowWhatImDoing: true,
@@ -212,6 +213,54 @@ describe("launchOptions", () => {
 
     expect(options.firefoxUserPrefs["network.http.http3.enable"]).toBe(false);
     expect(options.firefoxUserPrefs["browser.cache.memory.enable"]).toBe(true);
+  });
+
+  it("applies upstream Firefox user-pref defaults for proxy-safe WebRTC and HTTP", async () => {
+    const bundleDir = await createBundleDir();
+    mocks.camoufoxPath.mockResolvedValue(bundleDir);
+    mocks.launchPath.mockResolvedValue("/tmp/camoufox-bin");
+
+    const options = await launchOptions({
+      fingerprintPreset: FIREFOX_PRESET,
+      blockWebgl: true,
+      excludeAddons: [DefaultAddons.UBO],
+      iKnowWhatImDoing: true,
+    });
+
+    expect(options.firefoxUserPrefs["dom.security.https_first"]).toBe(false);
+    expect(options.firefoxUserPrefs["media.peerconnection.ice.no_host"]).toBe(false);
+    expect(options.firefoxUserPrefs["media.peerconnection.ice.default_address_only"]).toBe(true);
+    expect(options.firefoxUserPrefs["media.peerconnection.ice.proxy_only_if_behind_proxy"]).toBe(
+      true,
+    );
+    expect(options.firefoxUserPrefs["media.peerconnection.ice.proxy_only_if_pbmode"]).toBe(true);
+    expect(options.firefoxUserPrefs["media.peerconnection.ice.obfuscate_host_addresses"]).toBe(
+      true,
+    );
+    expect(options.firefoxUserPrefs["network.proxy.socks_remote_dns"]).toBe(true);
+  });
+
+  it("preserves explicit firefoxUserPrefs over upstream defaults", async () => {
+    const bundleDir = await createBundleDir();
+    mocks.camoufoxPath.mockResolvedValue(bundleDir);
+    mocks.launchPath.mockResolvedValue("/tmp/camoufox-bin");
+
+    const options = await launchOptions({
+      fingerprintPreset: FIREFOX_PRESET,
+      blockWebgl: true,
+      excludeAddons: [DefaultAddons.UBO],
+      iKnowWhatImDoing: true,
+      firefoxUserPrefs: {
+        "dom.security.https_first": true,
+        "media.peerconnection.ice.proxy_only_if_behind_proxy": false,
+      },
+    });
+
+    expect(options.firefoxUserPrefs["dom.security.https_first"]).toBe(true);
+    expect(options.firefoxUserPrefs["media.peerconnection.ice.proxy_only_if_behind_proxy"]).toBe(
+      false,
+    );
+    expect(options.firefoxUserPrefs["network.proxy.socks_remote_dns"]).toBe(true);
   });
 
   it("passes the resolved Firefox version into bundled preset selection", async () => {
