@@ -31,6 +31,8 @@ import {
   loadConfig,
   loadRepoCache,
   removeVersion,
+  saveConfig,
+  setPinnedSha,
 } from "../multiversion";
 import { AvailableVersion, RepoConfig, Version } from "../pkgman";
 
@@ -84,6 +86,14 @@ export class GuiBackend {
       { version, build: body.version.slice(version.length + 1), sha256: body.sha256 },
       target,
     );
+    return this.state();
+  }
+
+  async unpinVersion(): Promise<JsonObject> {
+    const config = loadConfig();
+    delete config.pinned;
+    setPinnedSha(config);
+    saveConfig(config);
     return this.state();
   }
 
@@ -141,6 +151,8 @@ export class GuiBackend {
             return this.json(res, 200, await this.setChannel(body));
           case "/api/pin-version":
             return this.json(res, 200, await this.pinVersion(body));
+          case "/api/unpin-version":
+            return this.json(res, 200, await this.unpinVersion());
           case "/api/remove":
             return this.json(res, 200, await this.remove(body));
           case "/api/geoip/download":

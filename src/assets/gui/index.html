@@ -153,8 +153,17 @@
               <div><strong>Channel:</strong> <code>${state.active.channel}</code></div>
               <div><strong>Pinned:</strong> ${state.active.pinned || "None"}</div>
             </div>
+            <div class="actions">
+              ${state.active.pinned ? '<button id="unpin-active" class="secondary">Unpin</button>' : ""}
+            </div>
           </div>
         `;
+        const unpinButton = document.getElementById("unpin-active");
+        if (unpinButton) {
+          unpinButton.addEventListener("click", async () => {
+            await mutate(() => api("/api/unpin-version", {}));
+          });
+        }
 
         const installed = new Map(
           state.installed.map((entry) => [versionKey(entry.version, entry.sha256), entry]),

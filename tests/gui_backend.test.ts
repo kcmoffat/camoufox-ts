@@ -69,4 +69,24 @@ describe("gui backend", () => {
     expect(resolved.selected?.url).toBe("https://example.test/older");
     expect(resolved.selected?.sha256).toBe("aaaaaaaa11111111");
   });
+
+  it("clears pinned version state without disturbing the followed channel", async () => {
+    const saveConfig = vi.spyOn(multiversion, "saveConfig").mockImplementation(() => undefined);
+    vi.spyOn(multiversion, "loadConfig").mockReturnValue({
+      channel: "official/stable",
+      pinned: "150.0.2-beta.25",
+      pinned_sha: "aaaaaaaa11111111",
+      active_version: "browsers/official/stable/150.0.2-beta.25",
+    });
+    vi.spyOn(multiversion, "loadRepoCache").mockReturnValue({});
+    vi.spyOn(multiversion, "listInstalled").mockReturnValue([]);
+
+    const backend = new GuiBackend();
+    await backend.unpinVersion();
+
+    expect(saveConfig).toHaveBeenCalledWith({
+      channel: "official/stable",
+      active_version: "browsers/official/stable/150.0.2-beta.25",
+    });
+  });
 });
