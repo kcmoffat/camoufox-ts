@@ -64,7 +64,19 @@ export class GuiBackend {
     if (!repoConfig || !selected) {
       throw new Error(`Version '${body.version ?? "active"}' not found in cache.`);
     }
+    const config = loadConfig();
+    const previousActiveVersion = config.active_version;
+    const shouldActivate =
+      !body.version || this.shouldActivateFetchedVersion(body.version, body.sha256, selected);
     await new CamoufoxUpdate(repoConfig, selected).initialize().then((update) => update.update());
+    if (!shouldActivate) {
+      if (previousActiveVersion == null) {
+        delete config.active_version;
+      } else {
+        config.active_version = previousActiveVersion;
+      }
+      saveConfig(config);
+    }
     if (ALLOW_GEOIP) {
       await downloadMmdb().catch(() => undefined);
     }
@@ -277,6 +289,31 @@ export class GuiBackend {
         assetCreatedAt: candidate.created_at,
       }),
     };
+  }
+
+  private shouldActivateFetchedVersion(
+    specifier: string | undefined,
+    sha256: string | undefined,
+    selected: AvailableVersion,
+  ): boolean {
+    const current = this.resolveFetchTarget();
+    if (!current.selected) {
+      return false;
+    }
+    if (
+      current.selected.version.fullString === selected.version.fullString &&
+      current.selected.sha256 === selected.sha256
+    ) {
+      return true;
+    }
+
+    const installed = specifier ? findInstalled(specifier) : undefined;
+    return Boolean(
+      installed &&
+        installed.isActive &&
+        installed.version.fullString === selected.version.fullString &&
+        (!sha256 || installed.sha256 === sha256),
+    );
   }
 
   private json(res: ServerResponse, status: number, data: JsonObject): void {

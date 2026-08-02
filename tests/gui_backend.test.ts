@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GuiBackend } from "../src/lib/gui/backend";
+import * as addons from "../src/lib/addons";
+import * as main from "../src/lib/__main__";
+import * as geolocation from "../src/lib/geolocation";
 import * as multiversion from "../src/lib/multiversion";
-import { RepoConfig } from "../src/lib/pkgman";
+import { AvailableVersion, RepoConfig, Version } from "../src/lib/pkgman";
 
 describe("gui backend", () => {
   afterEach(() => {
@@ -88,5 +91,123 @@ describe("gui backend", () => {
       channel: "official/stable",
       active_version: "browsers/official/stable/150.0.2-beta.25",
     });
+  });
+
+  it("does not switch the active install when fetching an inactive GUI-selected version", async () => {
+    vi.spyOn(multiversion, "loadRepoCache").mockReturnValue({
+      repos: [
+        {
+          name: "Official",
+          versions: [
+            {
+              version: "150.0.2",
+              build: "beta.26",
+              is_prerelease: false,
+              url: "https://example.test/new",
+              sha256: "bbbbbbbb22222222",
+            },
+            {
+              version: "150.0.2",
+              build: "beta.25",
+              is_prerelease: false,
+              url: "https://example.test/current",
+              sha256: "aaaaaaaa11111111",
+            },
+          ],
+        },
+      ],
+    });
+    vi.spyOn(multiversion, "loadConfig").mockReturnValue({
+      channel: "Official/stable",
+      pinned: "150.0.2-beta.25",
+      pinned_sha: "aaaaaaaa11111111",
+      active_version: "browsers/official/150.0.2-beta.25-aaaaaaaa",
+    });
+    const saveConfig = vi.spyOn(multiversion, "saveConfig").mockImplementation(() => undefined);
+    vi.spyOn(multiversion, "listInstalled").mockReturnValue([
+      {
+        repoName: "official",
+        version: new Version("beta.25", "150.0.2"),
+        path: "/tmp/browsers/official/150.0.2-beta.25-aaaaaaaa",
+        relativePath: "browsers/official/150.0.2-beta.25-aaaaaaaa",
+        channelPath: "official/stable/150.0.2-beta.25",
+        isActive: true,
+        isPrerelease: false,
+        sha256: "aaaaaaaa11111111",
+      },
+    ] as any);
+    vi.spyOn(RepoConfig, "findByName").mockReturnValue({ name: "Official" } as RepoConfig);
+    vi.spyOn(geolocation, "downloadMmdb").mockResolvedValue(undefined as never);
+    vi.spyOn(addons, "maybeDownloadAddons").mockResolvedValue(undefined);
+
+    const update = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(main, "CamoufoxUpdate").mockImplementation(
+      () =>
+        ({
+          initialize: async () => ({
+            update,
+          }),
+        }) as any,
+    );
+
+    const backend = new GuiBackend();
+    await backend.fetch({
+      version: "Official/stable/150.0.2-beta.26",
+      sha256: "bbbbbbbb22222222",
+    });
+
+    expect(update).toHaveBeenCalled();
+    expect(saveConfig).toHaveBeenCalledWith({
+      channel: "Official/stable",
+      pinned: "150.0.2-beta.25",
+      pinned_sha: "aaaaaaaa11111111",
+      active_version: "browsers/official/150.0.2-beta.25-aaaaaaaa",
+    });
+  });
+
+  it("keeps activation when fetching the currently followed GUI target", async () => {
+    vi.spyOn(multiversion, "loadRepoCache").mockReturnValue({
+      repos: [
+        {
+          name: "Official",
+          versions: [
+            {
+              version: "150.0.2",
+              build: "beta.26",
+              is_prerelease: false,
+              url: "https://example.test/new",
+              sha256: "bbbbbbbb22222222",
+            },
+          ],
+        },
+      ],
+    });
+    vi.spyOn(multiversion, "loadConfig").mockReturnValue({
+      channel: "Official/stable",
+    });
+    const saveConfig = vi.spyOn(multiversion, "saveConfig").mockImplementation(() => undefined);
+    vi.spyOn(multiversion, "listInstalled").mockReturnValue([]);
+    vi.spyOn(RepoConfig, "findByName").mockReturnValue({ name: "Official" } as RepoConfig);
+    vi.spyOn(geolocation, "downloadMmdb").mockResolvedValue(undefined as never);
+    vi.spyOn(addons, "maybeDownloadAddons").mockResolvedValue(undefined);
+
+    const update = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(main, "CamoufoxUpdate").mockImplementation(
+      () =>
+        ({
+          initialize: async () => ({
+            update,
+          }),
+        }) as any,
+    );
+
+    const backend = new GuiBackend();
+    await backend.fetch({
+      version: "Official/stable/150.0.2-beta.26",
+      sha256: "bbbbbbbb22222222",
+    });
+
+    expect(update).toHaveBeenCalled();
+    expect(saveConfig).not.toHaveBeenCalled();
   });
 });
