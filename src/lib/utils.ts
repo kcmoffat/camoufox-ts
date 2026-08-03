@@ -17,6 +17,7 @@ import {
   NonFirefoxFingerprint,
 } from "./exceptions";
 import {
+  alignVoiceDefaults,
   clampWindowDimensions,
   fixNavigatorArch,
   fixScreenNoTaskbar,
@@ -25,6 +26,7 @@ import {
   generateFingerprint,
   generateRandomFontSubset,
   generateRandomVoiceSubset,
+  getConfigLocale,
   getRandomPreset,
   setMediaDevicesDefaults,
   type ScreenConstraint,
@@ -552,11 +554,6 @@ export async function launchOptions(input: {
     }
   }
 
-  if (!config.voices) {
-    try {
-      config.voices = generateRandomVoiceSubset({ win: "windows", mac: "macos", lin: "linux" }[targetOs]);
-    } catch {}
-  }
   if (!userSetMediaDevices) {
     setMediaDevicesDefaults(config);
   }
@@ -593,6 +590,21 @@ export async function launchOptions(input: {
 
   if (locale) {
     handleLocales(locale, config);
+  }
+
+  if (!config.voices) {
+    try {
+      config.voices = generateRandomVoiceSubset(
+        { win: "windows", mac: "macos", lin: "linux" }[targetOs],
+        getConfigLocale(config),
+      );
+    } catch {}
+  } else {
+    config.voices = alignVoiceDefaults(
+      config.voices,
+      { win: "windows", mac: "macos", lin: "linux" }[targetOs],
+      getConfigLocale(config),
+    );
   }
 
   if (humanize) {

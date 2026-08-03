@@ -54,6 +54,16 @@ describe("fingerprints", () => {
     expect(generated.config["navigator.language"]).toBe("en-GB");
   });
 
+  it("aligns the default spoofed voice with the explicit per-context locale", () => {
+    const generated = generateContextFingerprint({
+      os: "linux",
+      locale: "de-DE",
+    });
+    const defaultVoice = generated.config.voices.find((voice: { isDefault: boolean }) => voice.isDefault);
+
+    expect(defaultVoice?.lang.split("-")[0]).toBe("de");
+  });
+
   it("prefers explicit timezone over preset timezone in per-context init scripts", () => {
     const generated = generateContextFingerprint({
       preset: {

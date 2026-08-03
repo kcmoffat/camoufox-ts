@@ -339,6 +339,47 @@ export function normalizePresetVoices(voices: any, targetOs: string): VoiceObjec
   return result;
 }
 
+export function getConfigLocale(config: Record<string, any>): string | undefined {
+  if (typeof config["navigator.language"] === "string" && config["navigator.language"]) {
+    return config["navigator.language"];
+  }
+  if (
+    typeof config["locale:language"] === "string" &&
+    config["locale:language"] &&
+    typeof config["locale:region"] === "string" &&
+    config["locale:region"]
+  ) {
+    return `${config["locale:language"]}-${config["locale:region"]}`;
+  }
+  return undefined;
+}
+
+export function alignVoiceDefaults(
+  voices: any,
+  targetOs: string,
+  locale?: string,
+): VoiceObject[] {
+  const normalized = normalizePresetVoices(voices, targetOs);
+  if (!normalized.length) {
+    return normalized;
+  }
+
+  for (const voice of normalized) {
+    voice.isDefault = false;
+  }
+
+  const prefix = locale?.split("-")[0]?.toLowerCase() ?? "en";
+  const exactMatchIndex = locale
+    ? normalized.findIndex((voice) => voice.lang.toLowerCase() === locale.toLowerCase())
+    : -1;
+  const prefixMatchIndex =
+    exactMatchIndex >= 0
+      ? exactMatchIndex
+      : normalized.findIndex((voice) => voice.lang.split("-")[0]?.toLowerCase() === prefix);
+  normalized[(prefixMatchIndex >= 0 ? prefixMatchIndex : 0)].isDefault = true;
+  return normalized;
+}
+
 export function fixNavigatorArch(config: Record<string, any>, targetOs: string): void {
   if (targetOs !== "lin") {
     return;
@@ -724,6 +765,19 @@ export function generateContextFingerprint(input: {
   if (configOverrides) {
     Object.assign(config, configOverrides);
   }
+
+  const targetOs =
+    config["navigator.platform"] === "MacIntel"
+      ? "macos"
+      : config["navigator.platform"] === "Win32"
+        ? "windows"
+        : String(config["navigator.platform"]).toLowerCase().includes("linux")
+          ? "linux"
+          : "macos";
+  const resolvedLocale = getConfigLocale(config);
+  config.voices = config.voices
+    ? alignVoiceDefaults(config.voices, targetOs, resolvedLocale)
+    : generateRandomVoiceSubset(targetOs, resolvedLocale);
 
   const navigatorPlatform = config["navigator.platform"] ?? nav.platform;
   const hardwareConcurrency =

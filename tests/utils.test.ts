@@ -386,6 +386,24 @@ describe("launchOptions", () => {
     expect(config["mediaDevices:micros"]).toBeUndefined();
   });
 
+  it("aligns the generated default voice with the spoofed launch locale", async () => {
+    const bundleDir = await createBundleDir();
+    mocks.camoufoxPath.mockResolvedValue(bundleDir);
+    mocks.launchPath.mockResolvedValue("/tmp/camoufox-bin");
+
+    const options = await launchOptions({
+      os: "linux",
+      locale: "de-DE",
+      blockWebgl: true,
+      excludeAddons: [DefaultAddons.UBO],
+      iKnowWhatImDoing: true,
+    });
+
+    const config = readConfigFromEnv(options.env);
+    const defaultVoice = config.voices.find((voice: { isDefault: boolean }) => voice.isDefault);
+    expect(defaultVoice?.lang.split("-")[0]).toBe("de");
+  });
+
   it("skips deprecated properties removed upstream", async () => {
     const bundleDir = await createBundleDir();
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
