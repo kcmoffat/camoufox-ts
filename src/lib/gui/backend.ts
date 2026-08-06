@@ -43,10 +43,14 @@ export class GuiBackend {
     const config = loadConfig();
     const cache = loadRepoCache();
     const installed = listInstalled();
+    const activeInstall = installed.find((version) => version.isActive);
     return {
       active: {
         channel: config.channel ?? "official/stable",
         pinned: config.pinned ?? null,
+        currentVersion: activeInstall?.version.fullString ?? null,
+        currentPath: activeInstall?.channelPath ?? null,
+        isPrerelease: activeInstall?.isPrerelease ?? null,
       },
       repos: cache.repos ?? [],
       installed: installed.map((version) => serializeInstalledVersion(version)),

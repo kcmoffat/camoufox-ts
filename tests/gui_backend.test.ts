@@ -73,6 +73,36 @@ describe("gui backend", () => {
     expect(resolved.selected?.sha256).toBe("aaaaaaaa11111111");
   });
 
+  it("includes the active installed version in manager state", async () => {
+    vi.spyOn(multiversion, "loadConfig").mockReturnValue({
+      channel: "Official/stable",
+      pinned: "150.0.2-beta.25",
+    });
+    vi.spyOn(multiversion, "loadRepoCache").mockReturnValue({});
+    vi.spyOn(multiversion, "listInstalled").mockReturnValue([
+      {
+        repoName: "official",
+        version: new Version("beta.25", "150.0.2"),
+        path: "/tmp/browsers/official/150.0.2-beta.25-aaaaaaaa",
+        relativePath: "browsers/official/150.0.2-beta.25-aaaaaaaa",
+        channelPath: "official/stable/150.0.2-beta.25",
+        isActive: true,
+        isPrerelease: false,
+      },
+    ] as any);
+
+    const backend = new GuiBackend();
+    await expect(backend.state()).resolves.toMatchObject({
+      active: {
+        channel: "Official/stable",
+        pinned: "150.0.2-beta.25",
+        currentVersion: "150.0.2-beta.25",
+        currentPath: "official/stable/150.0.2-beta.25",
+        isPrerelease: false,
+      },
+    });
+  });
+
   it("clears pinned version state without disturbing the followed channel", async () => {
     const saveConfig = vi.spyOn(multiversion, "saveConfig").mockImplementation(() => undefined);
     vi.spyOn(multiversion, "loadConfig").mockReturnValue({

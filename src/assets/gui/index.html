@@ -147,11 +147,15 @@
 
       function render(state) {
         status.textContent = "Ready";
+        const [activeRepo = "official", activeChannelType = "stable"] = String(
+          state.active.channel || "official/stable",
+        ).toLowerCase().split("/");
         active.innerHTML = `
           <div class="row">
             <div>
               <div><strong>Channel:</strong> <code>${state.active.channel}</code></div>
               <div><strong>Pinned:</strong> ${state.active.pinned || "None"}</div>
+              <div><strong>Current:</strong> ${state.active.currentPath || "Not installed"}</div>
             </div>
             <div class="actions">
               ${state.active.pinned ? '<button id="unpin-active" class="secondary">Unpin</button>' : ""}
@@ -170,12 +174,20 @@
         );
         repos.innerHTML = "";
         for (const repo of state.repos) {
+          const repoNameLower = String(repo.name || "").toLowerCase();
+          const followingStable = activeRepo === repoNameLower && activeChannelType === "stable";
+          const followingPrerelease =
+            activeRepo === repoNameLower && activeChannelType === "prerelease";
           const repoBlock = document.createElement("div");
           repoBlock.innerHTML = `
             <h3 class="repo-title">${repo.name}</h3>
             <div class="actions">
-              <button data-channel="${repo.name}/stable">Follow Stable</button>
-              <button data-channel="${repo.name}/prerelease" class="secondary">Follow Prerelease</button>
+              <button data-channel="${repo.name}/stable" ${followingStable ? "disabled" : ""}>${
+                followingStable ? "Following Stable" : "Follow Stable"
+              }</button>
+              <button data-channel="${repo.name}/prerelease" class="secondary" ${followingPrerelease ? "disabled" : ""}>${
+                followingPrerelease ? "Following Prerelease" : "Follow Prerelease"
+              }</button>
             </div>
           `;
           repoBlock.querySelectorAll("[data-channel]").forEach((button) => {
@@ -189,16 +201,30 @@
             const fullVersion = `${version.version}-${version.build}`;
             const installedVersion = installed.get(versionKey(fullVersion, version.sha256));
             const assetDate = formatAssetDate(version.created_at);
+            const isPinned =
+              activeRepo === repoNameLower &&
+              state.active.pinned === fullVersion &&
+              activeChannelType === (version.is_prerelease ? "prerelease" : "stable");
+            const isFollowedLatest =
+              activeRepo === repoNameLower &&
+              !state.active.pinned &&
+              activeChannelType === (version.is_prerelease ? "prerelease" : "stable") &&
+              state.active.currentVersion === fullVersion;
+            const badges = [
+              installedVersion?.isActive ? "Active" : "",
+              isPinned ? "Pinned" : "",
+              isFollowedLatest ? "Following" : "",
+            ].filter(Boolean);
             const row = document.createElement("div");
             row.className = "version-row";
             row.innerHTML = `
               <div>
                 <div><strong>v${fullVersion}</strong> ${version.is_prerelease ? "(prerelease)" : "(stable)"}</div>
-                <div class="meta">${installedVersion ? installedVersion.channelPath : "Not installed"}${assetDate ? ` · ${assetDate}` : ""}</div>
+                <div class="meta">${installedVersion ? installedVersion.channelPath : "Not installed"}${assetDate ? ` · ${assetDate}` : ""}${badges.length ? ` · ${badges.join(" · ")}` : ""}</div>
               </div>
               <div class="actions">
                 <button data-fetch>Fetch</button>
-                <button data-pin class="secondary">Pin</button>
+                <button data-pin class="secondary">${isPinned ? "Unpin" : "Pin"}</button>
                 ${installedVersion ? `<button data-remove class="warn">Remove</button>` : ""}
               </div>
             `;
@@ -211,6 +237,10 @@
               );
             });
             row.querySelector("[data-pin]").addEventListener("click", async () => {
+              if (isPinned) {
+                await mutate(() => api("/api/unpin-version", {}));
+                return;
+              }
               await mutate(() =>
                 api("/api/pin-version", {
                   repoName: repo.name,
