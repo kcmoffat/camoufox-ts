@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DefaultAddons } from "../src/lib/addons";
 import * as fingerprints from "../src/lib/fingerprints";
+import * as webgl from "../src/lib/webgl";
 
 const mocks = vi.hoisted(() => ({
   camoufoxPath: vi.fn<() => Promise<string>>(),
@@ -213,6 +214,29 @@ describe("launchOptions", () => {
 
     expect(options.firefoxUserPrefs["network.http.http3.enable"]).toBe(false);
     expect(options.firefoxUserPrefs["browser.cache.memory.enable"]).toBe(true);
+  });
+
+  it("strips the legacy allow_webgl compatibility flag from Playwright launch options", async () => {
+    const bundleDir = await createBundleDir();
+    mocks.camoufoxPath.mockResolvedValue(bundleDir);
+    mocks.launchPath.mockResolvedValue("/tmp/camoufox-bin");
+    const webglSpy = vi.spyOn(webgl, "sampleWebgl").mockReturnValue({
+      "webGl:vendor": "Intel Inc.",
+      "webGl:renderer": "Intel Iris OpenGL Engine",
+      webGl2Enabled: true,
+    });
+
+    const options = await launchOptions({
+      fingerprintPreset: FIREFOX_PRESET,
+      allow_webgl: false,
+      excludeAddons: [DefaultAddons.UBO],
+      iKnowWhatImDoing: true,
+    });
+
+    expect(options.allowWebgl).toBeUndefined();
+    expect(options.firefoxUserPrefs["webgl.disabled"]).toBe(true);
+    expect(webglSpy).not.toHaveBeenCalled();
+    webglSpy.mockRestore();
   });
 
   it("applies upstream Firefox user-pref defaults for proxy-safe WebRTC and HTTP", async () => {

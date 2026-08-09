@@ -632,7 +632,15 @@ export async function launchOptions(input: {
     firefoxUserPrefs["browser.tabs.remote.useCrossOriginOpenerPolicy"] = false;
   }
 
-  if (blockWebgl || extraLaunchOptions.allowWebgl === false) {
+  const allowWebgl = extraLaunchOptions.allowWebgl;
+  if (allowWebgl !== undefined) {
+    delete extraLaunchOptions.allowWebgl;
+  }
+
+  if (blockWebgl) {
+    firefoxUserPrefs["webgl.disabled"] = true;
+    LeakWarning.warn("block_webgl", iKnowWhatImDoing);
+  } else if (allowWebgl === false) {
     firefoxUserPrefs["webgl.disabled"] = true;
     LeakWarning.warn("block_webgl", iKnowWhatImDoing);
   } else {
