@@ -2,6 +2,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import envPaths from "env-paths";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DefaultAddons } from "../src/lib/addons";
@@ -214,6 +215,26 @@ describe("launchOptions", () => {
 
     expect(options.firefoxUserPrefs["network.http.http3.enable"]).toBe(false);
     expect(options.firefoxUserPrefs["browser.cache.memory.enable"]).toBe(true);
+  });
+
+  it("writes generated fontconfig into the platform cache directory", async () => {
+    const bundleDir = await fsp.mkdtemp(path.join(os.tmpdir(), "camoufox-fontconfig-"));
+    tempDirs.push(bundleDir);
+    const fontconfigDir = path.join(bundleDir, "fontconfig");
+    await fsp.mkdir(fontconfigDir, { recursive: true });
+    await fsp.writeFile(
+      path.join(fontconfigDir, "fonts.conf"),
+      '<fontconfig><dir prefix="cwd">fonts</dir></fontconfig>',
+      "utf8",
+    );
+
+    const runtimePath = await generateRuntimeFontConfig(fontconfigDir);
+    const expectedCacheDir = path.join(envPaths("camoufox").cache, "fontconfig");
+    const runtimeContent = await fsp.readFile(runtimePath, "utf8");
+
+    expect(path.dirname(runtimePath)).toBe(expectedCacheDir);
+    expect(runtimeContent).toContain("<dir>");
+    expect(runtimeContent).not.toContain('prefix="cwd"');
   });
 
   it("strips the legacy allow_webgl compatibility flag from Playwright launch options", async () => {

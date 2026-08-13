@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
+import envPaths from "env-paths";
 import systeminformation from "systeminformation";
 import { UAParser } from "ua-parser-js";
 import type { Fingerprint } from "fingerprint-generator";
@@ -104,7 +105,7 @@ export async function generateRuntimeFontConfig(fontConfigPath: string): Promise
     `<dir>${fontsDir}</dir>`,
   );
 
-  const cacheDir = path.join(os.homedir(), ".cache", "camoufox", "fontconfig");
+  const cacheDir = path.join(envPaths("camoufox").cache, "fontconfig");
   await fsp.mkdir(cacheDir, { recursive: true });
 
   const contentHash = crypto.createHash("sha256").update(runtimeContent).digest("hex").slice(0, 12);
