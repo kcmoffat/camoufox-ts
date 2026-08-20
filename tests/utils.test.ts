@@ -229,7 +229,7 @@ describe("launchOptions", () => {
     );
 
     const runtimePath = await generateRuntimeFontConfig(fontconfigDir);
-    const expectedCacheDir = path.join(envPaths("camoufox").cache, "fontconfig");
+    const expectedCacheDir = path.join(envPaths("camoufox", { suffix: "" }).cache, "fontconfig");
     const runtimeContent = await fsp.readFile(runtimePath, "utf8");
 
     expect(path.dirname(runtimePath)).toBe(expectedCacheDir);
@@ -481,7 +481,9 @@ describe("generateRuntimeFontConfig", () => {
     const runtimePath = await generateRuntimeFontConfig(fontConfigDir);
     const runtimeContent = await fsp.readFile(runtimePath, "utf8");
 
-    expect(runtimePath).toContain(path.join(".cache", "camoufox", "fontconfig", "fonts-"));
+    expect(path.dirname(runtimePath)).toBe(
+      path.join(envPaths("camoufox", { suffix: "" }).cache, "fontconfig"),
+    );
     expect(runtimeContent).toContain(`<dir>${fontsDir}</dir>`);
     expect(runtimeContent).not.toContain('prefix="cwd"');
 

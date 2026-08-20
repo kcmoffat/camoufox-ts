@@ -2,6 +2,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import envPaths from "env-paths";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -47,7 +48,8 @@ describe("linux fontconfig compatibility", () => {
 
     const env = await getEnvVars({}, "lin");
 
-    expect(env.FONTCONFIG_FILE).toContain(path.join(".cache", "camoufox", "fontconfig", "fonts-"));
+    const expectedCacheDir = path.join(envPaths("camoufox", { suffix: "" }).cache, "fontconfig");
+    expect(path.dirname(env.FONTCONFIG_FILE)).toBe(expectedCacheDir);
     expect(await fsp.readFile(env.FONTCONFIG_FILE, "utf8")).toContain(`<dir>${fontsDir}</dir>`);
 
     homedirSpy.mockRestore();

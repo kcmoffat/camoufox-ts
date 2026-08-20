@@ -105,7 +105,7 @@ export async function generateRuntimeFontConfig(fontConfigPath: string): Promise
     `<dir>${fontsDir}</dir>`,
   );
 
-  const cacheDir = path.join(envPaths("camoufox").cache, "fontconfig");
+  const cacheDir = path.join(envPaths("camoufox", { suffix: "" }).cache, "fontconfig");
   await fsp.mkdir(cacheDir, { recursive: true });
 
   const contentHash = crypto.createHash("sha256").update(runtimeContent).digest("hex").slice(0, 12);
