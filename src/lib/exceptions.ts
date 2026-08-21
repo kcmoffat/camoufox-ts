@@ -19,6 +19,7 @@ export class CannotFindXvfb extends VirtualDisplayError {}
 export class CannotExecuteXvfb extends VirtualDisplayError {}
 export class VirtualDisplayNotSupported extends VirtualDisplayError {}
 export class CamoufoxNotInstalled extends Error {}
+export class ProfileDirectoryError extends Error {}
 
 export class InvalidLocale extends LocaleError {
   static invalidInput(locale: string): InvalidLocale {

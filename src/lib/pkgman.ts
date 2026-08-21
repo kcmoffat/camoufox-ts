@@ -14,6 +14,7 @@ import { CONSTRAINTS } from "./__version__";
 import {
   CamoufoxNotInstalled,
   MissingRelease,
+  ProfileDirectoryError,
   UnsupportedArchitecture,
   UnsupportedOS,
 } from "./exceptions";
@@ -127,6 +128,58 @@ function compareArrays(left: number[], right: number[]): number {
     }
   }
   return 0;
+}
+
+export async function ensureBrowserProfileDir(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: SupportedOs = OS_NAME,
+): Promise<string | undefined> {
+  if (platform !== "lin") {
+    return undefined;
+  }
+
+  const homeDir = env.HOME ? path.resolve(env.HOME) : os.homedir();
+  const profileDir = path.join(homeDir, ".camoufox");
+
+  try {
+    const stat = await fsp.stat(profileDir).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") {
+        return undefined;
+      }
+      throw error;
+    });
+    if (stat?.isDirectory()) {
+      return profileDir;
+    }
+  } catch (error) {
+    throw new ProfileDirectoryError(
+      `Camoufox requires '${profileDir}' to be a directory before launch.`,
+      { cause: error },
+    );
+  }
+
+  try {
+    await fsp.mkdir(profileDir, { mode: 0o700, recursive: true });
+  } catch (error) {
+    throw new ProfileDirectoryError(
+      `Camoufox requires '${profileDir}' to exist before launch, but it could not be created. For a read-only runtime, create this directory before making HOME read-only.`,
+      { cause: error },
+    );
+  }
+
+  const stat = await fsp.stat(profileDir).catch((error: NodeJS.ErrnoException) => {
+    throw new ProfileDirectoryError(
+      `Camoufox requires '${profileDir}' to be a directory before launch.`,
+      { cause: error },
+    );
+  });
+  if (!stat.isDirectory()) {
+    throw new ProfileDirectoryError(
+      `Camoufox requires '${profileDir}' to be a directory before launch.`,
+    );
+  }
+
+  return profileDir;
 }
 
 function findVersionConstraints(
@@ -549,6 +602,7 @@ export class CamoufoxFetcher extends GitHubDownloader {
 
   async install(replace = false): Promise<void> {
     const { installVersioned } = await import("./multiversion");
+    await ensureBrowserProfileDir();
     await installVersioned(this, replace);
   }
 

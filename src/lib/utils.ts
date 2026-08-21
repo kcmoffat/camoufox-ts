@@ -36,7 +36,15 @@ import { geoipAllowed, getGeolocation } from "./geolocation";
 import { Proxy, publicIp, validIPv4, validIPv6 } from "./ip";
 import { handleLocales } from "./locales";
 import { findInstalledVersion } from "./multiversion";
-import { camoufoxPath, getPath, INSTALL_DIR, launchPath, OS_NAME, Version } from "./pkgman";
+import {
+  camoufoxPath,
+  ensureBrowserProfileDir,
+  getPath,
+  INSTALL_DIR,
+  launchPath,
+  OS_NAME,
+  Version,
+} from "./pkgman";
 import { VirtualDisplay } from "./virtdisplay";
 import { sampleWebgl } from "./webgl";
 import { assetPath } from "./assets";
@@ -458,6 +466,7 @@ export async function launchOptions(input: {
   );
   Object.assign(config, configProperties);
   const environment = { ...env } as Record<string, string>;
+  await ensureBrowserProfileDir(environment);
   const requestedBrowserPath = browser ? resolveInstalledBrowserPath(browser) : undefined;
 
   if (virtualDisplay) {

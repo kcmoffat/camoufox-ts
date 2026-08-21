@@ -1,9 +1,18 @@
+import fsp from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GitHubDownloader, RepoConfig, Version, listAvailableVersions } from "../src/lib/pkgman";
+import { GitHubDownloader, RepoConfig, Version, ensureBrowserProfileDir, listAvailableVersions } from "../src/lib/pkgman";
+
+const tempDirs: string[] = [];
 
 afterEach(() => {
   vi.restoreAllMocks();
+  return Promise.all(
+    tempDirs.splice(0).map((tempDir) => fsp.rm(tempDir, { recursive: true, force: true })),
+  );
 });
 
 describe("pkgman", () => {
@@ -170,5 +179,32 @@ describe("pkgman", () => {
     expect(versions.map((version) => version.sha8)).toEqual(["bbbbbbbb", "aaaaaaaa"]);
     expect(versions[0]?.assetCreatedAt).toBe("2026-06-23T12:00:00Z");
     expect(versions[1]?.assetCreatedAt).toBe("2026-06-22T12:00:00Z");
+  });
+
+  it("creates the Linux runtime profile directory when missing", async () => {
+    const homeDir = await fsp.mkdtemp(path.join(os.tmpdir(), "camoufox-home-"));
+    tempDirs.push(homeDir);
+
+    const profileDir = await ensureBrowserProfileDir({ HOME: homeDir }, "lin");
+
+    expect(profileDir).toBe(path.join(homeDir, ".camoufox"));
+    await expect(fsp.stat(profileDir as string)).resolves.toMatchObject({ isDirectory: expect.any(Function) });
+  });
+
+  it("returns the existing Linux runtime profile directory without rewriting it", async () => {
+    const homeDir = await fsp.mkdtemp(path.join(os.tmpdir(), "camoufox-home-"));
+    tempDirs.push(homeDir);
+    const profileDir = path.join(homeDir, ".camoufox");
+    await fsp.mkdir(profileDir, { recursive: true });
+
+    await expect(ensureBrowserProfileDir({ HOME: homeDir }, "lin")).resolves.toBe(profileDir);
+  });
+
+  it("skips Linux runtime profile setup on other platforms", async () => {
+    const homeDir = await fsp.mkdtemp(path.join(os.tmpdir(), "camoufox-home-"));
+    tempDirs.push(homeDir);
+
+    await expect(ensureBrowserProfileDir({ HOME: homeDir }, "mac")).resolves.toBeUndefined();
+    await expect(fsp.stat(path.join(homeDir, ".camoufox"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

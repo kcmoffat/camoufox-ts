@@ -11,6 +11,7 @@ import * as webgl from "../src/lib/webgl";
 
 const mocks = vi.hoisted(() => ({
   camoufoxPath: vi.fn<() => Promise<string>>(),
+  ensureBrowserProfileDir: vi.fn<(env?: NodeJS.ProcessEnv) => Promise<string | undefined>>(),
   getPath: vi.fn<(file: string) => Promise<string>>(),
   installedVerstr: vi.fn(() => {
     throw new Error("installedVerstr should not be used during launch option resolution");
@@ -23,6 +24,7 @@ vi.mock("../src/lib/pkgman", async () => {
   return {
     ...actual,
     camoufoxPath: mocks.camoufoxPath,
+    ensureBrowserProfileDir: mocks.ensureBrowserProfileDir,
     getPath: mocks.getPath,
     installedVerstr: mocks.installedVerstr,
     launchPath: mocks.launchPath,
@@ -81,6 +83,7 @@ function readConfigFromEnv(env: NodeJS.ProcessEnv): Record<string, any> {
 
 afterEach(async () => {
   mocks.camoufoxPath.mockReset();
+  mocks.ensureBrowserProfileDir.mockReset();
   mocks.getPath.mockReset();
   mocks.installedVerstr.mockClear();
   mocks.launchPath.mockReset();
@@ -196,6 +199,37 @@ describe("launchOptions", () => {
     expect(options.env.GDK_BACKEND).toBe("x11");
     expect(options.env.WAYLAND_DISPLAY).toBeUndefined();
     expect(options.env.MOZ_ENABLE_WAYLAND).toBe("0");
+  });
+
+  it("prepares the Linux profile directory before resolving launch paths", async () => {
+    const bundleDir = await createBundleDir();
+    mocks.camoufoxPath.mockResolvedValue(bundleDir);
+    mocks.launchPath.mockResolvedValue("/tmp/camoufox-bin");
+    mocks.ensureBrowserProfileDir.mockResolvedValue("/tmp/home/.camoufox");
+
+    await launchOptions({
+      os: "linux",
+      blockWebgl: true,
+      excludeAddons: [DefaultAddons.UBO],
+      iKnowWhatImDoing: true,
+      env: { HOME: "/tmp/home" },
+    });
+
+    expect(mocks.ensureBrowserProfileDir).toHaveBeenCalledWith({ HOME: "/tmp/home" });
+    expect(mocks.camoufoxPath).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails fast when the Linux profile preflight cannot create ~/.camoufox", async () => {
+    mocks.ensureBrowserProfileDir.mockRejectedValue(
+      new Error("Camoufox requires '/readonly/.camoufox' to exist before launch."),
+    );
+
+    await expect(
+      launchOptions({
+        env: { HOME: "/readonly" },
+      }),
+    ).rejects.toThrow(/\.camoufox/);
+    expect(mocks.camoufoxPath).not.toHaveBeenCalled();
   });
 
   it("accepts python-style snake_case launch kwargs", async () => {
