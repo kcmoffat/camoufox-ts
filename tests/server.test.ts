@@ -1,3 +1,5 @@
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -64,5 +66,40 @@ describe("server", () => {
     await expect(server.launchServer()).rejects.toThrow(
       "Server process terminated unexpectedly with exit code 3",
     );
+  });
+
+  it("rejects persistent-context launchServer options up front", async () => {
+    await expect(server.launchServer({ persistent_context: true })).rejects.toThrow(
+      "launchServer() does not support 'persistentContext'",
+    );
+    await expect(server.launchServer({ user_data_dir: "/tmp/profile" })).rejects.toThrow(
+      "launchServer() does not support 'userDataDir'",
+    );
+  });
+
+  it("writes a newline-delimited base64 config frame to the launch script", async () => {
+    const stdin = new PassThrough();
+    const child = Object.assign(new EventEmitter(), {
+      stdin,
+    }) as any;
+    const spawnSpy = vi.spyOn(server.SERVER_INTERNALS, "spawnProcess").mockReturnValue(child);
+    const launchSpy = vi
+      .spyOn(utils, "launchOptions")
+      .mockResolvedValue({ executablePath: "/tmp/camoufox-bin" });
+
+    const chunks: Buffer[] = [];
+    stdin.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+
+    const promise = server.launchServer();
+    await Promise.resolve();
+    child.emit("close", 4);
+
+    await expect(promise).rejects.toThrow("Server process terminated unexpectedly with exit code 4");
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    expect(launchSpy).toHaveBeenCalledTimes(1);
+    expect(Buffer.concat(chunks).toString("utf8")).toMatch(/\n$/);
+
+    spawnSpy.mockRestore();
+    launchSpy.mockRestore();
   });
 });

@@ -11,8 +11,36 @@ import {
 } from "./exceptions";
 import { OS_NAME } from "./pkgman";
 
+const DEFAULT_SCREEN = "1x1x24";
+const SCREEN_ENV_VAR = "CAMOUFOX_VIRTUAL_DISPLAY_SIZE";
+const COMPOSITE_ENV_VAR = "CAMOUFOX_VIRTUAL_DISPLAY_COMPOSITE";
+
+function resolveScreen(): string {
+  const value = process.env[SCREEN_ENV_VAR]?.trim() ?? "";
+  if (!value) {
+    return DEFAULT_SCREEN;
+  }
+
+  const parts = value.toLowerCase().split("x");
+  if (
+    ![2, 3].includes(parts.length) ||
+    parts.some((part) => !/^\d+$/.test(part) || Number.parseInt(part, 10) <= 0)
+  ) {
+    throw new VirtualDisplayNotSupported(
+      `${SCREEN_ENV_VAR} must look like '1920x1080' or '1920x1080x24', got ${JSON.stringify(value)}`,
+    );
+  }
+
+  if (parts.length === 2) {
+    parts.push("24");
+  }
+  return parts.join("x");
+}
+
 export class VirtualDisplay {
   readonly debug: boolean;
+  readonly screen: string;
+  readonly composite: boolean;
   proc?: ChildProcess;
   private displayNumber?: number;
   private displayPromise?: Promise<number>;
@@ -22,33 +50,11 @@ export class VirtualDisplay {
   private static readonly killTimeoutMs = 5_000;
   private static readonly x11SocketDir = "/tmp/.X11-unix";
 
-  static readonly xvfbArgs = [
-    "-screen",
-    "0",
-    "1x1x24",
-    "-ac",
-    "-nolisten",
-    "tcp",
-    "-extension",
-    "RENDER",
-    "+extension",
-    "GLX",
-    "-extension",
-    "COMPOSITE",
-    "-extension",
-    "XVideo",
-    "-extension",
-    "XVideo-MotionCompensation",
-    "-extension",
-    "XINERAMA",
-    "-fp",
-    "built-ins",
-    "-nocursor",
-    "-br",
-  ] as const;
-
-  constructor(debug = false) {
+  constructor(debug = false, screen?: string, composite?: boolean) {
     this.debug = debug;
+    this.screen = screen ?? resolveScreen();
+    this.composite =
+      composite ?? ["1", "true"].includes(process.env[COMPOSITE_ENV_VAR]?.trim() ?? "0");
   }
 
   get xvfbPath(): string {
@@ -85,7 +91,28 @@ export class VirtualDisplay {
       this.xvfbPath,
       "-displayfd",
       String(VirtualDisplay.displayFd),
-      ...VirtualDisplay.xvfbArgs,
+      "-screen",
+      "0",
+      this.screen,
+      "-ac",
+      "-nolisten",
+      "tcp",
+      "-extension",
+      "RENDER",
+      "+extension",
+      "GLX",
+      this.composite ? "+extension" : "-extension",
+      "COMPOSITE",
+      "-extension",
+      "XVideo",
+      "-extension",
+      "XVideo-MotionCompensation",
+      "-extension",
+      "XINERAMA",
+      "-fp",
+      "built-ins",
+      "-nocursor",
+      "-br",
     ];
 
     if (this.debug) {

@@ -56,6 +56,8 @@ afterEach(() => {
   whichSyncMock.mockReset();
   spawnMock.mockReset();
   vi.useRealTimers();
+  delete process.env.CAMOUFOX_VIRTUAL_DISPLAY_SIZE;
+  delete process.env.CAMOUFOX_VIRTUAL_DISPLAY_COMPOSITE;
 });
 
 describe("VirtualDisplay", () => {
@@ -73,7 +75,32 @@ describe("VirtualDisplay", () => {
     await expect(displayPromise).resolves.toBe(":117");
     expect(spawnMock).toHaveBeenCalledWith(
       xvfbPath,
-      ["-displayfd", "3", ...VirtualDisplay.xvfbArgs],
+      [
+        "-displayfd",
+        "3",
+        "-screen",
+        "0",
+        "1x1x24",
+        "-ac",
+        "-nolisten",
+        "tcp",
+        "-extension",
+        "RENDER",
+        "+extension",
+        "GLX",
+        "-extension",
+        "COMPOSITE",
+        "-extension",
+        "XVideo",
+        "-extension",
+        "XVideo-MotionCompensation",
+        "-extension",
+        "XINERAMA",
+        "-fp",
+        "built-ins",
+        "-nocursor",
+        "-br",
+      ],
       expect.objectContaining({
         detached: true,
         stdio: ["ignore", "ignore", "ignore", "pipe"],
@@ -156,6 +183,42 @@ describe("VirtualDisplay", () => {
 
     await expect(secondGet).resolves.toBe(":118");
     expect(spawnMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses CAMOUFOX_VIRTUAL_DISPLAY_SIZE and composite overrides", async () => {
+    const { child, pipe } = createChild();
+
+    process.env.CAMOUFOX_VIRTUAL_DISPLAY_SIZE = "1920x1080";
+    process.env.CAMOUFOX_VIRTUAL_DISPLAY_COMPOSITE = "true";
+    whichSyncMock.mockReturnValue(process.execPath);
+    spawnMock.mockReturnValue(child);
+
+    const displayPromise = new VirtualDisplay().get();
+    pipe.end("301\n");
+
+    await expect(displayPromise).resolves.toBe(":301");
+    expect(spawnMock).toHaveBeenCalledWith(
+      process.execPath,
+      expect.arrayContaining(["-screen", "0", "1920x1080x24", "+extension", "COMPOSITE"]),
+      expect.any(Object),
+    );
+  });
+
+  it("accepts explicit screen and composite constructor overrides", async () => {
+    const { child, pipe } = createChild();
+
+    whichSyncMock.mockReturnValue(process.execPath);
+    spawnMock.mockReturnValue(child);
+
+    const displayPromise = new VirtualDisplay(false, "2560x1440x30", true).get();
+    pipe.end("302\n");
+
+    await expect(displayPromise).resolves.toBe(":302");
+    expect(spawnMock).toHaveBeenCalledWith(
+      process.execPath,
+      expect.arrayContaining(["-screen", "0", "2560x1440x30", "+extension", "COMPOSITE"]),
+      expect.any(Object),
+    );
   });
 
   it("waits for Xvfb to exit after SIGKILL", async () => {

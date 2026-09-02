@@ -385,6 +385,23 @@ describe("launchOptions", () => {
     expect(options.disableTheming).toBeUndefined();
   });
 
+  it("maps allow_addon_new_tab into the Camoufox config", async () => {
+    const bundleDir = await createBundleDir();
+    mocks.camoufoxPath.mockResolvedValue(bundleDir);
+    mocks.launchPath.mockResolvedValue("/tmp/camoufox-bin");
+
+    const options = await launchOptions({
+      os: "linux",
+      blockWebgl: true,
+      excludeAddons: [DefaultAddons.UBO],
+      iKnowWhatImDoing: true,
+      allow_addon_new_tab: true,
+    });
+
+    const config = readConfigFromEnv(options.env);
+    expect(config.allowAddonNewtab).toBe(true);
+  });
+
   it("sanitizes generated BrowserForge geometry and media devices by default", async () => {
     const bundleDir = await createBundleDir();
     mocks.camoufoxPath.mockResolvedValue(bundleDir);

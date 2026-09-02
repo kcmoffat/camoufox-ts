@@ -409,6 +409,7 @@ export async function launchOptions(input: {
   ffVersion?: number | string;
   headless?: boolean | "virtual";
   mainWorldEval?: boolean;
+  allowAddonNewTab?: boolean;
   executablePath?: string;
   browser?: string;
   firefoxUserPrefs?: Record<string, any>;
@@ -445,6 +446,7 @@ export async function launchOptions(input: {
     ffVersion,
     headless = false,
     mainWorldEval,
+    allowAddonNewTab,
     executablePath,
     browser,
     firefoxUserPrefs = {},
@@ -626,6 +628,10 @@ export async function launchOptions(input: {
 
   if (mainWorldEval) {
     setInto(config, "allowMainWorld", true);
+  }
+
+  if (allowAddonNewTab) {
+    setInto(config, "allowAddonNewtab", true);
   }
 
   mergeInto(firefoxUserPrefs, DEFAULT_FIREFOX_USER_PREFS);
