@@ -196,7 +196,7 @@ export function determineUaOs(userAgent: string): "mac" | "win" | "lin" {
 }
 
 export async function getScreenCons(headless?: boolean | "virtual"): Promise<ScreenConstraint | undefined> {
-  if (headless === false) {
+  if (headless === true) {
     return undefined;
   }
   try {
@@ -309,6 +309,9 @@ export function warnManualConfig(config: Record<string, any>): void {
   }
   if (isDomainSet(config, "navigator.")) {
     LeakWarning.warn("navigator", false);
+  }
+  if (isDomainSet(config, "navigator.maxTouchPoints")) {
+    LeakWarning.warn("max_touch_points", false);
   }
   if (isDomainSet(config, "screen.", "window.", "document.body.")) {
     LeakWarning.warn("viewport", false);
@@ -447,7 +450,7 @@ export async function launchOptions(input: {
     headless = false,
     mainWorldEval,
     allowAddonNewTab,
-    executablePath,
+    executablePath: inputExecutablePath,
     browser,
     firefoxUserPrefs = {},
     proxy,
@@ -460,6 +463,7 @@ export async function launchOptions(input: {
     ...rawExtraLaunchOptions
   } = normalizedInput;
 
+  const executablePath = inputExecutablePath ?? (process.env.CAMOUFOX_EXECUTABLE_PATH?.trim() || undefined);
   const config = passedConfig ?? {};
   const propertyTypes = await loadProperties(executablePath);
   const { configProperties, launchOptions: extraLaunchOptions } = splitConfigProperties(
@@ -527,7 +531,9 @@ export async function launchOptions(input: {
   let generatedFingerprint = fingerprint;
   if (!usedPreset && generatedFingerprint == null) {
     generatedFingerprint = generateFingerprint({
-      screen: screen ?? (await getScreenCons(headless || "DISPLAY" in environment)),
+      screen: screen ?? (OS_NAME !== "lin" || environment.DISPLAY || environment.WAYLAND_DISPLAY
+        ? await getScreenCons(headless)
+        : undefined),
       window,
       os: os as string | string[] | undefined,
     });

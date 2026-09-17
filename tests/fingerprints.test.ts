@@ -6,6 +6,7 @@ import {
   fixNavigatorArch,
   fixScreenNoTaskbar,
   fromBrowserforge,
+  fromPreset,
   generateContextFingerprint,
   generateFingerprint,
   generateRandomVoiceSubset,
@@ -16,6 +17,13 @@ import {
 } from "../src/lib/fingerprints";
 
 describe("fingerprints", () => {
+  it("derives preset appVersion from the user agent's OS tokens", () => {
+    const config = fromPreset({ navigator: {
+      userAgent: "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:152.0) Gecko/20100101 Firefox/152.0",
+      platform: "Linux x86_64",
+    } });
+    expect(config["navigator.appVersion"]).toBe("5.0 (X11; Ubuntu)");
+  });
   it("generates a Firefox fingerprint and translates it to Camoufox config", () => {
     const fingerprint = generateFingerprint({ os: "windows" });
     const config = fromBrowserforge(fingerprint, "140");

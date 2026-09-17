@@ -69,7 +69,7 @@ export async function maybeDownloadAddons(
   for (const addon of addons) {
     const addonName = getDefaultAddonName(addon);
     const addonPath = getAddonPath(addonName);
-    if (fs.existsSync(addonPath)) {
+    if (fs.existsSync(path.join(addonPath, "manifest.json"))) {
       addonsList?.push(addonPath);
       continue;
     }
@@ -78,6 +78,7 @@ export async function maybeDownloadAddons(
       await downloadAndExtract(addon, addonPath, addonName);
       addonsList?.push(addonPath);
     } catch (error) {
+      await fsp.rm(addonPath, { recursive: true, force: true });
       console.error(`Failed to download and extract ${addonName}:`, error);
     }
   }

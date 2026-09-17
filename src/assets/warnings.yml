@@ -49,3 +49,6 @@ custom_fonts_only: >-
 
 disable_coop: >-
     Disabling Cross-Origin-Opener-Policy (COOP) handling can potentially be detected by sophisticated WAFs.
+
+max_touch_points: >-
+    Setting navigator.maxTouchPoints manually overrides Camoufox's touchscreen handling. The rest of your fingerprint is not adjusted to suit, so an unusual screen size can remain inconsistent with the claimed digitizer.

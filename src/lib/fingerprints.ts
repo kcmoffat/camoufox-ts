@@ -546,6 +546,18 @@ export function fromPreset(preset: Record<string, any>, ffVersion?: string): Rec
   } else if (String(nav.platform).toLowerCase().includes("linux")) {
     config["navigator.oscpu"] = "Linux x86_64";
   }
+  if (nav.appVersion) {
+    config["navigator.appVersion"] = nav.appVersion;
+  } else if (config["navigator.userAgent"]) {
+    const tokens = /^Mozilla\/5\.0 \(([^)]*)\)/.exec(config["navigator.userAgent"]);
+    if (tokens) {
+      const osTokens = tokens[1].split(";").map((token) => token.trim())
+        .filter((token) => !token.startsWith("rv:") && !["Win64", "x64", "Mobile", "Tablet"].includes(token)
+          && !token.startsWith("Linux ") && !token.startsWith("Intel Mac OS X"))
+        .map((token) => token.startsWith("Windows") ? "Windows" : token);
+      if (osTokens.length) config["navigator.appVersion"] = `5.0 (${osTokens.join("; ")})`;
+    }
+  }
   if ("maxTouchPoints" in nav) {
     config["navigator.maxTouchPoints"] = nav.maxTouchPoints;
   }

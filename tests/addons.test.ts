@@ -53,6 +53,13 @@ afterEach(async () => {
 });
 
 describe("addons", () => {
+  it("re-downloads an addon whose manifest is missing", async () => {
+    const addonPath = path.join(ADDONS_DIR, "UBO");
+    await fsp.mkdir(addonPath, { recursive: true });
+    await maybeDownloadAddons([DefaultAddons.UBO]);
+    expect(mocks.webdl).toHaveBeenCalledOnce();
+    expect(fs.existsSync(path.join(addonPath, "manifest.json"))).toBe(true);
+  });
   it("stores default addons under the enum name used by the upstream Python wrapper", async () => {
     const addonsList: string[] = [];
 

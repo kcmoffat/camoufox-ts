@@ -2,6 +2,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 
 import {
   AvailableVersion,
@@ -359,6 +360,17 @@ export async function installVersioned(fetcher: CamoufoxFetcher, replace = false
 
   try {
     await CamoufoxFetcher.downloadFile(tempFile, fetcher.url);
+    const expectedSha = fetcher["selectedVersion"]?.sha256 ?? fetcher.installedSha256;
+    if (expectedSha) {
+      const hash = crypto.createHash("sha256");
+      for await (const chunk of fs.createReadStream(tempFile)) hash.update(chunk);
+      const actualSha = hash.digest("hex");
+      if (actualSha !== expectedSha.toLowerCase()) {
+        throw new Error(`Checksum mismatch for Camoufox v${fetcher.verstr}: expected ${expectedSha.toLowerCase()}, got ${actualSha}`);
+      }
+    } else {
+      rprint(`Warning: no sha256 published for Camoufox v${fetcher.verstr}; skipping verification.`, "yellow");
+    }
     rprint(`Extracting Camoufox: ${installPath}`);
     await unzip(tempFile, installPath);
 

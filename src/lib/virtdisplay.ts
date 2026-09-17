@@ -208,16 +208,16 @@ export class VirtualDisplay {
     }
 
     const proc = this.proc;
-    if (!proc || proc.exitCode != null) {
+    if (!proc) {
       this.resetState();
       return;
     }
 
     this.killPromise = (async () => {
-      if (this.debug) {
+      if (this.debug && proc.exitCode == null) {
         console.log("Terminating virtual display:", this.displayNumber);
       }
-      proc.kill("SIGKILL");
+      if (proc.exitCode == null) proc.kill("SIGKILL");
 
       if (proc.exitCode == null) {
         const timedOut = Symbol("timedOut");
