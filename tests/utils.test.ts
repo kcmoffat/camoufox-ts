@@ -82,6 +82,7 @@ function readConfigFromEnv(env: NodeJS.ProcessEnv): Record<string, any> {
 }
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   mocks.camoufoxPath.mockReset();
   mocks.ensureBrowserProfileDir.mockReset();
   mocks.getPath.mockReset();
@@ -117,9 +118,10 @@ describe("launchOptions", () => {
     expect(mocks.installedVerstr).not.toHaveBeenCalled();
   });
 
-  it("uses the supplied executable bundle to derive Firefox version", async () => {
+  it.each([undefined, "[App]\nName=Camoufox\n", "[App]\nVersion= \n"])("uses the executable bundle when application.ini has no version (%j)", async (ini) => {
     const bundleDir = await createBundleDir();
     const executablePath = path.join(bundleDir, "camoufox-bin");
+    if (ini !== undefined) await fsp.writeFile(path.join(bundleDir, "application.ini"), ini);
 
     const options = await launchOptions({
       executablePath,
@@ -133,6 +135,28 @@ describe("launchOptions", () => {
     expect(mocks.camoufoxPath).not.toHaveBeenCalled();
     expect(mocks.launchPath).not.toHaveBeenCalled();
     expect(mocks.installedVerstr).not.toHaveBeenCalled();
+  });
+
+  it.each(["option", "environment"])("derives a custom build's version from application.ini via %s without a cached browser", async (source) => {
+    const bundleDir = await createBundleDir();
+    await fsp.rm(path.join(bundleDir, "version.json"));
+    await fsp.writeFile(path.join(bundleDir, "application.ini"), "[App]\nVersion= 152.0.4 \n");
+    const executablePath = path.join(bundleDir, "camoufox-bin");
+    mocks.camoufoxPath.mockRejectedValue(new Error("No cached browser"));
+    if (source === "environment") vi.stubEnv("CAMOUFOX_EXECUTABLE_PATH", executablePath);
+
+    const options = await launchOptions({
+      executablePath: source === "option" ? executablePath : undefined,
+      fingerprintPreset: FIREFOX_PRESET,
+      blockWebgl: true,
+      excludeAddons: [DefaultAddons.UBO],
+      iKnowWhatImDoing: true,
+    });
+
+    expect(options.executablePath).toBe(executablePath);
+    expect(readConfigFromEnv(options.env as NodeJS.ProcessEnv)["navigator.userAgent"]).toContain("Firefox/152.0");
+    expect(mocks.camoufoxPath).not.toHaveBeenCalled();
+    expect(mocks.launchPath).not.toHaveBeenCalled();
   });
 
   it("generates macOS font markers for macOS fingerprints", async () => {

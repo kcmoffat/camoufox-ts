@@ -505,12 +505,10 @@ export async function launchOptions(input: {
   const ffVersionStr =
     ffVersion != null
       ? (LeakWarning.warn("ff_version", iKnowWhatImDoing), String(ffVersion))
-      : resolveFirefoxVersion(
-          await resolveVersionSourcePath({
-            browserPath: requestedBrowserPath,
-            executablePath,
-          }),
-        );
+      : await resolveLaunchFirefoxVersion({
+          browserPath: requestedBrowserPath,
+          executablePath,
+        });
   let usedPreset = false;
 
   if (fingerprint != null) {
@@ -727,22 +725,31 @@ function resolveInstalledBrowserPath(browser: string): string {
   return browserPath;
 }
 
-async function resolveVersionSourcePath(input: {
+async function resolveLaunchFirefoxVersion(input: {
   browserPath?: string;
   executablePath?: string;
 }): Promise<string> {
   if (input.browserPath) {
-    return input.browserPath;
+    return resolveFirefoxVersion(input.browserPath);
   }
 
   if (input.executablePath) {
+    const iniPath = path.join(path.dirname(input.executablePath), "application.ini");
+    const ini = await fsp.readFile(iniPath, "utf8").catch(() => "");
+    for (const line of ini.split(/\r?\n/)) {
+      if (line.startsWith("Version=")) {
+        const version = line.slice("Version=".length).trim();
+        if (version) return version.split(".", 1)[0];
+      }
+    }
+
     const executableBundlePath = findBundleRoot(input.executablePath);
     if (executableBundlePath) {
-      return executableBundlePath;
+      return resolveFirefoxVersion(executableBundlePath);
     }
   }
 
-  return camoufoxPath();
+  return resolveFirefoxVersion(await camoufoxPath());
 }
 
 function findBundleRoot(executablePath: string): string | undefined {
