@@ -640,17 +640,18 @@ export async function launchOptions(input: {
 
   mergeInto(firefoxUserPrefs, DEFAULT_FIREFOX_USER_PREFS);
 
+  // Write these toggles on every launch. Persistent profiles preserve user.js
+  // prefs in prefs.js, so a toggle that only writes its enabled value would
+  // remain enabled after the flag is removed.
   if (blockImages) {
     LeakWarning.warn("block_images", iKnowWhatImDoing);
-    firefoxUserPrefs["permissions.default.image"] = 2;
-  }
-  if (blockWebrtc) {
-    firefoxUserPrefs["media.peerconnection.enabled"] = false;
   }
   if (disableCoop) {
     LeakWarning.warn("disable_coop", iKnowWhatImDoing);
-    firefoxUserPrefs["browser.tabs.remote.useCrossOriginOpenerPolicy"] = false;
   }
+  firefoxUserPrefs["permissions.default.image"] ??= blockImages ? 2 : 1;
+  firefoxUserPrefs["media.peerconnection.enabled"] ??= !blockWebrtc;
+  firefoxUserPrefs["browser.tabs.remote.useCrossOriginOpenerPolicy"] ??= !disableCoop;
 
   const allowWebgl = extraLaunchOptions.allowWebgl;
   if (allowWebgl !== undefined) {

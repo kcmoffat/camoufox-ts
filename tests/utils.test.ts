@@ -366,6 +366,34 @@ describe("launchOptions", () => {
     expect(options.firefoxUserPrefs["network.proxy.socks_remote_dns"]).toBe(true);
   });
 
+  it.each([
+    ["blockWebrtc", "media.peerconnection.enabled", true, false],
+    ["blockImages", "permissions.default.image", 1, 2],
+    ["disableCoop", "browser.tabs.remote.useCrossOriginOpenerPolicy", true, false],
+  ])("writes %s both on and off without overriding caller prefs", async (flag, pref, stock, toggled) => {
+    const bundleDir = await createBundleDir();
+    mocks.camoufoxPath.mockResolvedValue(bundleDir);
+    mocks.launchPath.mockResolvedValue("/tmp/camoufox-bin");
+    const baseOptions = {
+      fingerprintPreset: FIREFOX_PRESET,
+      blockWebgl: true,
+      excludeAddons: [DefaultAddons.UBO],
+      iKnowWhatImDoing: true,
+    };
+
+    await expect(launchOptions(baseOptions)).resolves.toHaveProperty(
+      ["firefoxUserPrefs", pref],
+      stock,
+    );
+    await expect(launchOptions({ ...baseOptions, [flag]: true })).resolves.toHaveProperty(
+      ["firefoxUserPrefs", pref],
+      toggled,
+    );
+    await expect(
+      launchOptions({ ...baseOptions, firefoxUserPrefs: { [pref]: toggled } }),
+    ).resolves.toHaveProperty(["firefoxUserPrefs", pref], toggled);
+  });
+
   it("passes the resolved Firefox version into bundled preset selection", async () => {
     const bundleDir = await createBundleDir();
     await fsp.writeFile(
